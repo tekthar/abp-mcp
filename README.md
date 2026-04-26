@@ -8,6 +8,29 @@
 > One NuGet, one line, and every `[McpTool]`-tagged Application Service is reachable by Claude, Cursor, and every MCP-compatible agent.
 > In-process. Permission-aware. Tenancy-aware — agent calls flow through ABP's normal `ICurrentTenant` pipeline, so a token issued for a tenant calls into that tenant's data.
 
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Agent as 🤖 Claude / Cursor / any MCP client
+    participant MCP as /mcp endpoint<br/>(in-process)
+    participant Service as Your <code>IApplicationService</code><br/>(BookAppService, etc.)
+    participant DB as 💾 EF Core / your data store
+
+    Agent->>MCP: tools/list
+    MCP->>MCP: filter by ABP permissions<br/>of the bearer token
+    MCP-->>Agent: only the tools this user can call
+
+    Agent->>MCP: tools/call Loan_CheckOut(memberId, editionId)
+    MCP->>MCP: re-check permission +<br/>map JSON args to DTO
+    MCP->>Service: CheckOutAsync(input)
+    Service->>DB: INSERT INTO Loans
+    DB-->>Service: ok
+    Service-->>MCP: LoanDto
+    MCP-->>Agent: structured result + content blocks
+```
+
+> A 30-second screen recording of this flow against the bundled Library sample is tracked as [#18](https://github.com/tekthar/abp-mcp/issues/18). PRs welcome.
+
 **Status:** pre-alpha (v0.1). Phase 1 scaffolding in place. Not yet published to NuGet.
 
 ## Why

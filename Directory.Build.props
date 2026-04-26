@@ -12,13 +12,16 @@
   </PropertyGroup>
 
   <PropertyGroup Label="Package metadata">
-    <Authors>abp-mcp contributors</Authors>
-    <Company>abp-mcp</Company>
+    <Authors>tekthar and abp-mcp contributors</Authors>
+    <Company>tekthar</Company>
     <RepositoryUrl>https://github.com/tekthar/abp-mcp</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/tekthar/abp-mcp</PackageProjectUrl>
-    <PackageTags>abp;mcp;model-context-protocol;ai;agents;claude;aspnetcore</PackageTags>
+    <!-- Tags are how nuget.org filtered search finds this. The two that matter most for
+         our audience are "abp" and "mcp"; the rest are second-order matches. -->
+    <PackageTags>abp;abp-framework;mcp;model-context-protocol;claude;ai;agents;dotnet;aspnetcore</PackageTags>
+    <PackageReleaseNotes>See https://github.com/tekthar/abp-mcp/releases for release notes.</PackageReleaseNotes>
     <Version>0.1.0-alpha</Version>
   </PropertyGroup>
 </Project>

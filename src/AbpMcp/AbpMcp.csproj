@@ -4,14 +4,20 @@
     <RootNamespace>AbpMcp</RootNamespace>
     <AssemblyName>AbpMcp</AssemblyName>
     <PackageId>AbpMcp</PackageId>
-    <Description>Auto-generates a Model Context Protocol (MCP) server from an ABP Framework application's Application Services. In-process, permission-aware, multi-tenant aware.</Description>
+    <Description>Auto-generates a Model Context Protocol (MCP) server from an ABP Framework application's Application Services. In-process, permission-aware, tenancy-aware.</Description>
     <IsPackable>true</IsPackable>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="ModelContextProtocol.AspNetCore" Version="1.0.0" />
     <PackageReference Include="Volo.Abp.AspNetCore.Mvc" Version="9.2.*" />
     <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="9.0.*" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Embed the repo README into the .nupkg so nuget.org renders the package page from it. -->
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
 
   <ItemGroup>
