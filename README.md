@@ -89,6 +89,59 @@ public class ProductAppService : ApplicationService, IProductAppService
     public Task<ProductDto> CreateAsync(CreateProductDto input) => /* ... */;
 }
 ```
+### Customising tool descriptions and names
+
+By default, each exposed method receives a mechanical description based on its
+class and method name — for example, `Invoke OrderAppService.PlaceOrderAsync.`.
+That is often enough for simple CRUD, but agents rely on descriptions to choose
+the right tool the first time. When a method carries business semantics the name
+alone does not convey, override the description explicitly:
+
+```csharp
+// Default: agent sees "Invoke LoanAppService.CheckOutAsync."
+[McpTool]
+public class LoanAppService : ApplicationService, ILoanAppService
+{
+    // Override: agent sees your business-intent description instead
+    [McpTool(Description = "Check out a library edition to a member. " +
+        "Pre-validates member status and copy availability; " +
+        "rejects with LIBRARY:NO_COPIES_AVAILABLE if all copies are checked out " +
+        "or LIBRARY:MEMBER_SUSPENDED if the member is suspended.")]
+    public Task<LoanDto> CheckOutAsync(CheckOutDto input) => /* ... */;
+}
+```
+
+Override descriptions for tools where the action has business semantics the
+method name does not carry — refunds, cancellations, escalations, anything
+destructive or irreversible, or any method whose failure modes an agent should
+know about before calling it.
+
+#### Overriding the tool name
+
+The auto-generated name follows the pattern `ServicePrefix_MethodName`
+(e.g., `Loan_CheckOut`). Override it only when two services in different
+assemblies produce a colliding tool name and you want to disambiguate without
+relying on the configured prefix:
+
+```csharp
+[McpTool(Name = "Library_CheckOut")]
+public Task<LoanDto> CheckOutAsync(CheckOutDto input) => /* ... */;
+```
+
+Name overrides are rare. Prefer fixing a prefix collision by adjusting
+`AbpMcpOptions` before reaching for a per-method `Name` override.
+
+#### Verifying your overrides
+
+Both `Description` and `Name` overrides are visible immediately at the
+discovery endpoint — no agent required:
+
+```bash
+curl http://localhost:5000/mcp/_discover | jq '.tools[] | {name, description}'
+```
+
+Run this after adding an override to confirm the change took effect before
+pointing a real agent at the server.
 
 Point Claude (or any MCP client) at `https://your-host/mcp` with a bearer token from your ABP identity server, and the agent calls every exposed tool with the same permissions as a regular user.
 
