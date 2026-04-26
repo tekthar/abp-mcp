@@ -1,5 +1,9 @@
 # abp-mcp
 
+[![CI](https://github.com/tekthar/abp-mcp/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/tekthar/abp-mcp/actions/workflows/ci.yml)
+[![NuGet](https://img.shields.io/nuget/v/AbpMcp.svg?logo=nuget)](https://www.nuget.org/packages/AbpMcp)
+[![License: MIT](https://img.shields.io/github/license/tekthar/abp-mcp.svg)](LICENSE)
+
 > Auto-generate a Model Context Protocol (MCP) server from your ABP Framework application.
 > One NuGet, one line, and every `[McpTool]`-tagged Application Service is reachable by Claude, Cursor, and every MCP-compatible agent.
 > In-process. Permission-aware. Multi-tenant aware.

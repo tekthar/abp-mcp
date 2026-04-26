@@ -1,0 +1,103 @@
+name: Release
+
+# Triggered when a tag of the form v* is pushed (e.g. v0.1.0-alpha, v0.1.0, v1.2.3).
+# Builds, tests, packs, pushes to nuget.org, and creates a GitHub Release with the .nupkg attached.
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Manual version to publish (e.g. 0.1.0-alpha). Used only when running by hand.'
+        required: true
+        type: string
+
+permissions:
+  contents: write   # for `gh release create`
+
+jobs:
+  publish:
+    name: Build, Pack, Publish
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # required so `gh release create --generate-notes` can diff history
+
+      - name: Setup .NET 9
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+
+      - name: Resolve version
+        id: ver
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            VERSION="${{ inputs.version }}"
+            TAG="v${VERSION}"
+          else
+            TAG="${GITHUB_REF#refs/tags/}"
+            VERSION="${TAG#v}"
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Resolved tag=$TAG version=$VERSION"
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build (Release, with overridden version)
+        run: |
+          dotnet build \
+            --no-restore \
+            --configuration Release \
+            -p:Version=${{ steps.ver.outputs.version }} \
+            -p:ContinuousIntegrationBuild=true
+
+      - name: Test (must pass before publishing)
+        run: |
+          dotnet test \
+            --no-build \
+            --configuration Release \
+            --logger "console;verbosity=normal"
+
+      - name: Pack
+        run: |
+          dotnet pack src/AbpMcp/AbpMcp.csproj \
+            --no-build \
+            --configuration Release \
+            -p:Version=${{ steps.ver.outputs.version }} \
+            -o artifacts
+
+      - name: Push to nuget.org
+        env:
+          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+        run: |
+          if [[ -z "${NUGET_API_KEY}" ]]; then
+            echo "::error::NUGET_API_KEY secret is not set. Add it under Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+          dotnet nuget push "artifacts/*.nupkg" \
+            --api-key "$NUGET_API_KEY" \
+            --source https://api.nuget.org/v3/index.json \
+            --skip-duplicate
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Pre-releases are anything containing a hyphen (e.g. 0.1.0-alpha).
+          PRERELEASE_FLAG=""
+          if [[ "${{ steps.ver.outputs.version }}" == *-* ]]; then
+            PRERELEASE_FLAG="--prerelease"
+          fi
+
+          gh release create "${{ steps.ver.outputs.tag }}" \
+            --title "${{ steps.ver.outputs.tag }}" \
+            --generate-notes \
+            $PRERELEASE_FLAG \
+            artifacts/*.nupkg

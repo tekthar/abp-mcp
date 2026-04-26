@@ -1,0 +1,38 @@
+version: 2
+updates:
+  # NuGet dependencies — all .csproj files across src/, samples/, test/.
+  - package-ecosystem: "nuget"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "nuget"
+    groups:
+      # Roll Microsoft + ABP minor/patch bumps into one PR each so the queue stays clean.
+      microsoft:
+        patterns:
+          - "Microsoft.*"
+          - "System.*"
+        update-types:
+          - "minor"
+          - "patch"
+      abp:
+        patterns:
+          - "Volo.Abp.*"
+        update-types:
+          - "minor"
+          - "patch"
+
+  # GitHub Actions versions — keep our pinned uses: refs current.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "github-actions"
