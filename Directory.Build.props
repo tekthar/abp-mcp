@@ -14,10 +14,10 @@
   <PropertyGroup Label="Package metadata">
     <Authors>abp-mcp contributors</Authors>
     <Company>abp-mcp</Company>
-    <RepositoryUrl>https://github.com/ak-itani/abp-mcp</RepositoryUrl>
+    <RepositoryUrl>https://github.com/tekthar/abp-mcp</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    <PackageProjectUrl>https://github.com/ak-itani/abp-mcp</PackageProjectUrl>
+    <PackageProjectUrl>https://github.com/tekthar/abp-mcp</PackageProjectUrl>
     <PackageTags>abp;mcp;model-context-protocol;ai;agents;claude;aspnetcore</PackageTags>
     <Version>0.1.0-alpha</Version>
   </PropertyGroup>
