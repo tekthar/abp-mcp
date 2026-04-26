@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 💬 Question or design discussion
+    url: https://github.com/tekthar/abp-mcp/discussions
+    about: Open-ended questions, architecture chats, "is this the right approach" → use Discussions, not Issues.
+  - name: 🔒 Security vulnerability
+    url: https://github.com/tekthar/abp-mcp/security/advisories/new
+    about: Found a security issue? Do NOT open a public issue. Report it privately here.
+  - name: 📚 ABP Framework support
+    url: https://abp.io/community
+    about: Questions about ABP itself (modules, conventions, EF Core integration) belong on the ABP community site.

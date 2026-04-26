@@ -97,23 +97,42 @@ abp-mcp/
 │       ├── Registration/           # DynamicMcpToolRegistry
 │       └── Dispatch/               # AbpMcpDispatcher
 ├── samples/
-│   └── AbpMcp.Sample/              # minimal ABP host to demo against
+│   └── AbpMcp.Sample/              # runnable Library host (15 [McpTool] methods, seeded)
 ├── test/
-│   └── AbpMcp.Tests/               # xUnit tests
-├── DESIGN.md
-├── CLAUDE.md
+│   ├── AbpMcp.Tests/               # unit tests (schema mapping, naming, options shape)
+│   └── AbpMcp.IntegrationTests/    # seed-DB → invoke-tool → verify-DB integration tests
+├── .github/
+│   ├── workflows/                  # CI build+test, release-on-tag (signs + publishes)
+│   ├── ISSUE_TEMPLATE/             # bug + feature forms
+│   └── PULL_REQUEST_TEMPLATE.md
+├── DESIGN.md                       # premises, alternatives, scope decisions
+├── CHANGELOG.md                    # release notes
+├── CONTRIBUTING.md                 # setup + design rules + PR process
+├── SECURITY.md                     # private vulnerability reporting
+├── CLAUDE.md                       # project guidance for agents & humans
+├── LICENSE                         # MIT
 └── README.md
 ```
 
 ## Contributing
 
-Pre-alpha. Direct PRs welcome for:
+Pre-alpha. Direct PRs welcome — please skim [CONTRIBUTING.md](CONTRIBUTING.md) before opening anything non-trivial. The non-negotiable design rules and the regression-test requirement are in there.
+
+Open invitations:
 - JSON Schema mapping for complex DTOs (recursion handling, polymorphism)
-- Streamable HTTP transport config
+- Streamable HTTP transport config refinements
 - Sample host integration against eShopOnAbp
 
 Every bug fix lands with a regression test. No exceptions.
 
+## Other docs
+
+- [DESIGN.md](DESIGN.md) — premises, alternatives considered, scope decisions
+- [CHANGELOG.md](CHANGELOG.md) — what shipped when
+- [CONTRIBUTING.md](CONTRIBUTING.md) — setup, design rules, PR process
+- [SECURITY.md](SECURITY.md) — vulnerability reporting (do NOT open a public issue for security)
+- [CLAUDE.md](CLAUDE.md) — project guidance for Claude Code & humans
+
 ## License
 
-MIT.
+[MIT](LICENSE).

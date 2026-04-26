@@ -1,0 +1,80 @@
+name: ✨ Feature request
+description: A capability you wish abp-mcp had. Read DESIGN.md first — some things are deliberately out of scope.
+title: "[feat] "
+labels: ["enhancement", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before opening, please skim [DESIGN.md](https://github.com/tekthar/abp-mcp/blob/main/DESIGN.md). Some features (notably "Approach C — LLM-enhanced descriptions") are deliberately out of v1.0 scope. Re-opening a scoped-out item is fine, but it needs a design conversation, not just a feature ask.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem is this solving?
+      description: |
+        Concrete user pain, not a generic capability. "Agents fail at X because Y" beats "we should add X".
+      placeholder: "When an agent calls a tool with an invalid DTO, the validation errors come back as one big string. Agents can't structure-recover from them."
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed shape
+      description: |
+        How would the public API look? Show code, not just description. If it changes `AbpMcpOptions`, mock the option in C#.
+      render: csharp
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: |
+        At least one — even "do nothing, the user can work around it by ___". Single-option proposals get pushed back for alternatives in review anyway.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Which scope does this belong in?
+      description: Best guess — we'll triage. See DESIGN.md "v0.2 scope" for what's already on the roadmap.
+      options:
+        - v0.1.x patch (bug-shaped, fits in a small PR)
+        - v0.2 (already on the roadmap)
+        - v1.0 (needs to ship before public stable)
+        - post-v1.0 (deferred, optionality is fine)
+        - Not sure — please triage
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: design-rules
+    attributes:
+      label: Design-rule compatibility
+      description: Tick what applies. If something doesn't tick, that's a design-conversation flag.
+      options:
+        - label: Doesn't change the source of truth from ABP's api-definition.
+        - label: Stays opt-in (services without `[McpTool]` remain invisible).
+        - label: Doesn't introduce a catch-all exception handler in the dispatcher.
+        - label: Stays in-process (no sidecar, no stdio transport).
+        - label: Public surface stays ABP-idiomatic (mirrors `[RemoteService]` / `ConventionalControllers` patterns).
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional context
+      description: Use cases, related upstream issues, prior art in other ecosystems. Optional.
+
+  - type: checkboxes
+    id: confirms
+    attributes:
+      label: Confirmations
+      options:
+        - label: I searched [open issues](https://github.com/tekthar/abp-mcp/issues) and didn't find a duplicate.
+          required: true
+        - label: I read DESIGN.md and this isn't a deliberately scoped-out item (or, if it is, I have a reason to revisit).
+          required: true

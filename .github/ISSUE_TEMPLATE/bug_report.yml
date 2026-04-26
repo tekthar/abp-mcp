@@ -1,0 +1,100 @@
+name: 🐛 Bug report
+description: A reproducible defect in abp-mcp's behavior — wrong tool list, wrong dispatch, wrong error mapping, etc.
+title: "[bug] "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing a bug. The most useful debugging input is the output of `GET /mcp/_explain?service=YourServiceName` — please include it below if you can. That single output usually narrows the bug to one of: ABP didn't see the service, the reader filtered it out, or the dispatcher mapped it wrong.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: One paragraph. Concrete observation, not interpretation.
+      placeholder: "Called Loan_CheckOut via Claude. Got back `INTERNAL` instead of `BUSINESS_ERROR`. Stack trace below."
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+      description: One sentence. Quote the design rule or doc passage if there is one.
+      placeholder: "Expected the BusinessException's Code (`LIBRARY:NO_COPIES_AVAILABLE`) to come through as the MCP error code, per the error-mapping table in DESIGN.md."
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Minimal reproducer
+      description: |
+        Smallest `[McpTool]`-decorated service + the MCP request that triggers it. A code block beats a description every time.
+        If you can't share the real service, redact identifiers but keep the shape.
+      render: csharp
+    validations:
+      required: true
+
+  - type: textarea
+    id: explain-output
+    attributes:
+      label: Output of /mcp/_explain
+      description: |
+        `curl http://localhost:5000/mcp/_explain?service=YourServiceName`
+        (or whatever port your host runs on). Paste the JSON. Skip if the bug is pre-discovery.
+      render: json
+
+  - type: input
+    id: abp-version
+    attributes:
+      label: ABP Framework version
+      placeholder: "9.2.4"
+    validations:
+      required: true
+
+  - type: input
+    id: abp-mcp-version
+    attributes:
+      label: abp-mcp version
+      placeholder: "0.1.0-alpha"
+    validations:
+      required: true
+
+  - type: input
+    id: dotnet-version
+    attributes:
+      label: .NET SDK version
+      description: Output of `dotnet --version`
+      placeholder: "9.0.305"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Windows
+        - Linux
+        - macOS
+        - Other (note in additional context)
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional context
+      description: Logs, screenshots, related issues, anything else that helps. Optional.
+
+  - type: checkboxes
+    id: confirms
+    attributes:
+      label: Confirmations
+      options:
+        - label: I searched [open issues](https://github.com/tekthar/abp-mcp/issues) and didn't find a duplicate.
+          required: true
+        - label: This is a bug in abp-mcp, not in ABP itself or the MCP SDK. (If unsure, file it here anyway — we'll route.)
+          required: true
