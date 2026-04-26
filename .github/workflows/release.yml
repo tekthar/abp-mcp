@@ -73,6 +73,40 @@ jobs:
             -p:Version=${{ steps.ver.outputs.version }} \
             -o artifacts
 
+      - name: Decode signing certificate
+        env:
+          NUGET_SIGNING_CERTIFICATE_B64: ${{ secrets.NUGET_SIGNING_CERTIFICATE_B64 }}
+        run: |
+          if [[ -z "${NUGET_SIGNING_CERTIFICATE_B64}" ]]; then
+            echo "::error::NUGET_SIGNING_CERTIFICATE_B64 secret is missing. tekthar's nuget.org org requires every package be signed."
+            exit 1
+          fi
+          # Place outside the workspace so the file isn't accidentally archived in any later step.
+          umask 077
+          echo "$NUGET_SIGNING_CERTIFICATE_B64" | base64 -d > "$RUNNER_TEMP/codesign.pfx"
+
+      - name: Sign package
+        env:
+          NUGET_SIGNING_PASSWORD: ${{ secrets.NUGET_SIGNING_PASSWORD }}
+        run: |
+          if [[ -z "${NUGET_SIGNING_PASSWORD}" ]]; then
+            echo "::error::NUGET_SIGNING_PASSWORD secret is missing."
+            exit 1
+          fi
+          dotnet nuget sign artifacts/*.nupkg \
+            --certificate-path "$RUNNER_TEMP/codesign.pfx" \
+            --certificate-password "$NUGET_SIGNING_PASSWORD" \
+            --timestamper http://timestamp.digicert.com \
+            --timestamp-hash-algorithm SHA256
+
+      - name: Verify signature
+        run: dotnet nuget verify artifacts/*.nupkg --all
+
+      - name: Wipe signing key from runner
+        if: always()
+        run: |
+          shred -u "$RUNNER_TEMP/codesign.pfx" 2>/dev/null || rm -f "$RUNNER_TEMP/codesign.pfx"
+
       - name: Push to nuget.org
         env:
           NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}

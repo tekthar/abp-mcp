@@ -65,6 +65,11 @@ pnpm-debug.log*
 appsettings.Production.json
 appsettings.*.local.json
 
+## Signing keys (defensive — real keys live in ~/.nuget-signing and GitHub Secrets)
+*.pfx
+*.p12
+*.cer
+
 ## Anthropic SDK / build caches
 .anthropic/
 .cache/
