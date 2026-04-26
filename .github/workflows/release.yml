@@ -28,7 +28,7 @@ jobs:
           fetch-depth: 0   # required so `gh release create --generate-notes` can diff history
 
       - name: Setup .NET 9
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 9.0.x
 
