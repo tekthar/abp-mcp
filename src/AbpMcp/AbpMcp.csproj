@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>AbpMcp</RootNamespace>
+    <AssemblyName>AbpMcp</AssemblyName>
+    <PackageId>AbpMcp</PackageId>
+    <Description>Auto-generates a Model Context Protocol (MCP) server from an ABP Framework application's Application Services. In-process, permission-aware, multi-tenant aware.</Description>
+    <IsPackable>true</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="ModelContextProtocol.AspNetCore" Version="1.0.0" />
+    <PackageReference Include="Volo.Abp.AspNetCore.Mvc" Version="9.2.*" />
+    <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="9.0.*" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="AbpMcp.Tests" />
+  </ItemGroup>
+
+</Project>
