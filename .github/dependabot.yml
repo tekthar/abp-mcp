@@ -10,6 +10,16 @@ updates:
     labels:
       - "dependencies"
       - "nuget"
+    ignore:
+      # FluentAssertions v7 moved to a commercial license (Xceed). v6.12.x is the last
+      # Apache-2.0 release. Stay on 6.12.* until the licensing situation changes or we
+      # migrate to a different assertion library.
+      - dependency-name: "FluentAssertions"
+        versions: [">=7.0.0"]
+      # Microsoft.Extensions.* major bumps cross the .NET 9 -> 10 boundary in many cases.
+      # We target net9.0; revisit when we drop net9.0 support.
+      - dependency-name: "Microsoft.Extensions.*"
+        update-types: ["version-update:semver-major"]
     groups:
       # Roll Microsoft + ABP minor/patch bumps into one PR each so the queue stays clean.
       microsoft:
@@ -36,3 +46,10 @@ updates:
     labels:
       - "dependencies"
       - "github-actions"
+    groups:
+      # Group all Actions bumps together so we get one rebase-friendly PR instead of
+      # three that all touch the same workflow files (which is what we got for our
+      # first batch — checkout / setup-dotnet / upload-artifact each as separate PRs).
+      actions:
+        patterns:
+          - "*"
