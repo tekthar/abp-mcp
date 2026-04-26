@@ -44,7 +44,7 @@ jobs:
 
       - name: Upload test results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: test-results
           path: test-results/**/*.trx
@@ -71,7 +71,7 @@ jobs:
             -o artifacts
 
       - name: Upload nupkg artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: AbpMcp-nupkg-preview
           path: artifacts/*.nupkg
