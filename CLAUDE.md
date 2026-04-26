@@ -67,9 +67,9 @@ dotnet pack src/AbpMcp/AbpMcp.csproj -c Release -o artifacts/
 
 ## Known stubs and open work (as of v0.1)
 
-- `DynamicMcpToolRegistry.Initialize` builds descriptors but the bridge to Microsoft's `IMcpServer` programmatic tool registration is pending the SDK surface stabilizing (tracked upstream in `modelcontextprotocol/csharp-sdk#317`).
+- `DynamicMcpToolRegistry.Initialize` builds descriptors and `AbpMcpHandlerWiring` surfaces them via the MCP SDK's `ListTools`/`CallTool` handlers. A future move to the SDK's programmatic tool-registration API (if/when it stabilizes — tracked upstream in `modelcontextprotocol/csharp-sdk#317`) is a one-file swap behind `IDynamicMcpToolRegistry`.
 - `ToolDescriptorBuilder` emits `{"type": "object"}` for complex DTOs in v0.1. Full DTO walk (nested properties, required-ness, recursion guard) is v1.0.
-- `ApiDefinitionReader` does not yet honor `AbpMcpOptions.ExposedAssemblies` — it scans across all loaded ABP modules. Filtering by registered assemblies is queued for the next pass; the API surface is in place so consumers don't need to change anything when it lands.
+- `ApiDefinitionReader` honors `AbpMcpOptions.ExposedAssemblies` as a filter (registered → restrict; empty → scan everything ABP gave us). The convenience extension `services.AddAbpMcpAssembly(asm)` registers with both `AbpAspNetCoreMvcOptions.ConventionalControllers` and `AbpMcpOptions.ExposedAssemblies` in one call. Letting the lambda-style `Configure<AbpMcpOptions>(o => o.ExposedAssemblies.Create(asm))` *itself* auto-register with `ConventionalControllers` is queued for v0.2.
 - No Claude Skill generator yet. That is the Approach C evolution; after v0.1 lands.
 - No build-time LLM description enhancement yet. Same — Approach C.
 

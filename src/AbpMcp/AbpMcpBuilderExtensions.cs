@@ -69,9 +69,10 @@ public static class AbpMcpBuilderExtensions
             convention.RequireAuthorization();
         }
 
-        // Diagnostic endpoints. Always require authentication (or follow AllowAnonymous)
-        // because exposure decisions and parameter schemas reveal application structure.
-        AbpMcpDiagnosticsEndpoints.Map(endpoints, options.Path);
+        // Diagnostic endpoints follow the same auth posture as the MCP endpoint itself.
+        // _discover and _explain reveal the full tool surface, parameter schemas, and required
+        // permissions, so leaving them anonymous in an otherwise-authed host would be a leak.
+        AbpMcpDiagnosticsEndpoints.Map(endpoints, options.Path, requireAuthorization: !options.AllowAnonymous);
 
         return convention;
     }

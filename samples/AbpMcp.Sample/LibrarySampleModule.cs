@@ -29,19 +29,15 @@ public sealed class LibrarySampleModule : AbpModule
 
         services.AddDbContext<LibraryDbContext>(opts => opts.UseInMemoryDatabase(DemoDatabaseName));
 
-        // ABP's api-definition provider only sees services registered with the
-        // ConventionalControllers convention. Until abp-mcp v0.2 auto-registers this
-        // (tracked in DESIGN.md), users opt their assembly in once explicitly.
-        Configure<AbpAspNetCoreMvcOptions>(opts =>
-        {
-            opts.ConventionalControllers.Create(typeof(LibrarySampleModule).Assembly);
-        });
+        // One call does both wirings: registers this assembly with ABP's
+        // ConventionalControllers (so the api-definition provider can see its app services)
+        // AND with abp-mcp's ExposedAssemblies filter (so the MCP scan scopes to it).
+        services.AddAbpMcpAssembly(typeof(LibrarySampleModule).Assembly);
 
         Configure<AbpMcpOptions>(opts =>
         {
             opts.Path = "/mcp";
             opts.AllowAnonymous = true;            // sample only — production hosts inherit ABP auth
-            opts.ExposedAssemblies.Create(typeof(LibrarySampleModule).Assembly);
             opts.RequireAtLeastOneTool = true;     // we ship three [McpTool] services so this should hold
         });
     }

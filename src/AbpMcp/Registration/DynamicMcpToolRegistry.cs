@@ -8,10 +8,11 @@ namespace AbpMcp.Registration;
 /// Default registry implementation.
 /// </summary>
 /// <remarks>
-/// In v0.1 we advertise the built descriptors to the Microsoft MCP SDK through its
-/// programmatic tool registration API. The exact hook depends on the SDK surface area
-/// shipped in <c>ModelContextProtocol.AspNetCore</c> 1.0; keeping the bridge behind
-/// this interface means the rest of the codebase is unaffected by SDK changes.
+/// Descriptors are surfaced to Microsoft's MCP SDK through the ListTools/CallTool handlers
+/// wired in <see cref="AbpMcpHandlerWiring"/>. Keeping the registry behind this interface
+/// means the rest of the codebase is unaffected if the SDK exposes a separate programmatic
+/// tool-registration API later (tracked upstream in <c>modelcontextprotocol/csharp-sdk#317</c>);
+/// at that point switching the bridge implementation is a one-file change.
 /// </remarks>
 internal sealed class DynamicMcpToolRegistry : IDynamicMcpToolRegistry
 {
@@ -60,12 +61,6 @@ internal sealed class DynamicMcpToolRegistry : IDynamicMcpToolRegistry
             "abp-mcp initialized with {ToolCount} tools: {Tools}",
             descriptors.Count,
             string.Join(", ", descriptors.Select(d => d.Name)));
-
-        // Next: wire each descriptor into Microsoft's IMcpServer via programmatic tool registration.
-        // Target API surface (tracked in csharp-sdk#317): McpServerBuilder.AddTool(ToolDescription, handler).
-        // Bridge deferred until the SDK exposes a stable programmatic registration entry point;
-        // in the meantime the descriptors are observable via this.Tools and can be fed through
-        // WithHandler-style hooks once available.
 
         _initialized = true;
     }

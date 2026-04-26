@@ -6,7 +6,7 @@
 
 > Auto-generate a Model Context Protocol (MCP) server from your ABP Framework application.
 > One NuGet, one line, and every `[McpTool]`-tagged Application Service is reachable by Claude, Cursor, and every MCP-compatible agent.
-> In-process. Permission-aware. Multi-tenant aware.
+> In-process. Permission-aware. Tenancy-aware — agent calls flow through ABP's normal `ICurrentTenant` pipeline, so a token issued for a tenant calls into that tenant's data.
 
 **Status:** pre-alpha (v0.1). Phase 1 scaffolding in place. Not yet published to NuGet.
 
@@ -14,25 +14,46 @@
 
 Every ABP app already declares its business logic as `IApplicationService` with typed DTOs, permission attributes, XML docs, and multi-tenancy awareness. That is richer metadata than any OpenAPI spec. Generic OpenAPI → MCP converters produce low-quality servers that confuse agents. `abp-mcp` skips the OpenAPI middleman entirely and generates from ABP's own API description pipeline — the same one that powers ABP's TS/C# proxy generators.
 
-## Quickstart (once v0.1 ships)
+## Quickstart (v0.1.0-alpha)
 
-Install the NuGet:
+Install the NuGet (pre-release):
 
 ```bash
-dotnet add package AbpMcp
+dotnet add package AbpMcp --prerelease
 ```
 
-Add the module and wire the endpoint in your ABP host's `Program.cs`:
+Add `AbpMcpModule` to your application module's `[DependsOn(...)]`, then register the assembly that holds your application services:
 
 ```csharp
-builder.Services.AddAbpMcp(opts =>
+[DependsOn(
+    typeof(AbpAspNetCoreMvcModule),
+    typeof(AbpMcpModule),
+    /* your other modules */)]
+public class MyAppHttpApiHostModule : AbpModule
 {
-    opts.Path = "/mcp";
-});
+    public override void ConfigureServices(ServiceConfigurationContext context)
+    {
+        // One call wires both ABP's ConventionalControllers (so the api-definition
+        // provider sees the assembly's app services) and abp-mcp's ExposedAssemblies
+        // filter (so the MCP scan scopes to it).
+        context.Services.AddAbpMcpAssembly(typeof(MyAppApplicationModule).Assembly);
 
-// ... build the app ...
+        Configure<AbpMcpOptions>(opts =>
+        {
+            opts.Path = "/mcp";
+        });
+    }
 
-app.MapAbpMcp();
+    public override void OnApplicationInitialization(ApplicationInitializationContext context)
+    {
+        var app = context.GetApplicationBuilder();
+        app.UseRouting();
+        app.UseConfiguredEndpoints(endpoints =>
+        {
+            endpoints.MapAbpMcp();
+        });
+    }
+}
 ```
 
 Tag the services you want agent-accessible:
@@ -46,7 +67,9 @@ public class ProductAppService : ApplicationService, IProductAppService
 }
 ```
 
-Point Claude (or any MCP client) at `https://your-host/mcp` with a bearer token from your ABP identity server, and the agent can call every exposed tool with the same permissions as a regular user.
+Point Claude (or any MCP client) at `https://your-host/mcp` with a bearer token from your ABP identity server, and the agent calls every exposed tool with the same permissions as a regular user.
+
+> Not in an `AbpModule`? The raw `builder.Services.AddAbpMcp(...)` + `app.MapAbpMcp()` path works too. The module-style example above is the one most ABP solutions reach for first.
 
 ## Try the sample (60 seconds, zero setup)
 
@@ -71,9 +94,33 @@ curl http://localhost:5000/mcp/_discover | jq '.tools[].name'
 curl 'http://localhost:5000/mcp/_explain?service=Loan'
 ```
 
-Point Claude Desktop (or any MCP client) at `http://localhost:5000/mcp` and the
-agent can search the catalog, register members, and check books out — every call
-hitting a real `IApplicationService` and persisting through EF Core.
+Point Claude Desktop at `http://localhost:5000/mcp` by adding this to your
+`claude_desktop_config.json` (`%APPDATA%\Claude\claude_desktop_config.json` on
+Windows, `~/Library/Application Support/Claude/claude_desktop_config.json` on macOS):
+
+```jsonc
+{
+  "mcpServers": {
+    "abp-mcp-sample": {
+      "type": "streamable-http",
+      "url": "http://localhost:5000/mcp"
+    }
+  }
+}
+```
+
+Restart Claude Desktop. The agent can now search the catalog, register members,
+and check books out — every call hitting a real `IApplicationService` and
+persisting through EF Core.
+
+## Tenancy
+
+The MCP endpoint is mounted on the host's normal request pipeline, so ABP's
+`ICurrentTenant` resolution flows through unchanged. A bearer token issued for
+tenant `T` (with the `__tenant` claim set, the way ABP's identity server issues
+them) calls into tenant `T`'s data — no extra wiring. Host-level tenancy
+resolvers (header, cookie, route) work the same way they do for any ABP HTTP
+endpoint. Cross-tenant impersonation is intentionally *not* supported in v0.1.
 
 ## Design
 

@@ -21,11 +21,13 @@ First public pre-release. Functional but pre-alpha — API surface will move bas
   - `ToolNameNormalizer` — pluggable naming strategy (default strips `AppService`/`Async`/etc.)
   - `DisabledTools` — runtime kill-switch (hot-reload via `IOptionsMonitor`)
   - `AllowAnonymous`, `RequireAtLeastOneTool`, `Path`, `ToolNamePrefix`
+- **`services.AddAbpMcpAssembly(typeof(MyModule).Assembly)`** — convenience extension that registers an assembly with both `AbpAspNetCoreMvcOptions.ConventionalControllers` (so ABP's api-definition provider sees its app services) AND `AbpMcpOptions.ExposedAssemblies` (so the abp-mcp scan scopes to it). Removes the "I configured one but not the other and got zero tools" trap.
 - **Permission-aware tool listing and dispatch** — every `tools/list` filters by the caller's granted permissions; every `tools/call` re-checks at the dispatcher boundary (defense in depth).
 - **ABP exception → MCP error mapping** — `AbpValidationException`, `AbpAuthorizationException`, `BusinessException`, `UserFriendlyException`, and `OperationCanceledException` all translate to specific MCP error codes; unknown exceptions become `INTERNAL` with no stack-trace leakage.
 - **Diagnostic endpoints** (always shipped, never feature-flagged):
   - `GET /mcp/_discover` — list every registered tool with its name, description, JSON schema, and required permissions
   - `GET /mcp/_explain?service=...` — see exactly why each candidate service method was included or excluded
+  - Both follow the same auth posture as the MCP endpoint: when `AllowAnonymous = false`, `_discover` and `_explain` require authentication too (they reveal the tool surface, parameter schemas, and required permissions, so anonymous access in an authed host would be a leak).
 - **Sample host (`samples/AbpMcp.Sample`)** — a runnable ABP host with a small library domain (`Title`, `Edition`, `Member`, `Loan`) and 15 `[McpTool]`-decorated methods across `CatalogAppService`, `MemberAppService`, `LoanAppService`. Seeded with six classic titles (Hobbit, Dune, Pride and Prejudice, Gatsby, 1984, Foundation) on first boot.
 - **Test suites:**
   - 21 unit tests (`test/AbpMcp.Tests`) — JSON schema mapping, naming conventions, options shape
@@ -38,7 +40,7 @@ First public pre-release. Functional but pre-alpha — API surface will move bas
 - `ToolDescriptorBuilder` emits `{"type": "object"}` for complex DTOs. Recursive property walks with required-ness and cycle protection land in v1.0.
 - LLM-enhanced tool descriptions and a paired Claude Skill (Approach C) are deferred until usage data tells us where mechanical descriptions actually fail. See [DESIGN.md](DESIGN.md) for rationale.
 - No Roslyn analyzer yet to flag `[McpTool]` on non-`IApplicationService` types at compile time. Targeted for v0.3.
-- The api-definition reader does not yet auto-register assemblies with ABP's `ConventionalControllers` convention — users opt in with one extra line. Likely v0.2.
+- `services.AddAbpMcpAssembly(asm)` already removes the two-step registration friction for the common case. Letting `AbpMcpOptions.ExposedAssemblies.Create(asm)` *itself* auto-register with `ConventionalControllers` (so the lambda-style `Configure<AbpMcpOptions>(...)` form needs no companion call either) is queued for v0.2.
 
 [Unreleased]: https://github.com/tekthar/abp-mcp/compare/v0.1.0-alpha...HEAD
 [0.1.0-alpha]: https://github.com/tekthar/abp-mcp/releases/tag/v0.1.0-alpha

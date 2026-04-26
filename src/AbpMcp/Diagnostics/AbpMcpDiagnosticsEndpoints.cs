@@ -31,13 +31,26 @@ public static class AbpMcpDiagnosticsEndpoints
     /// Mount the diagnostics endpoints under the given base path. Called by
     /// <see cref="AbpMcpBuilderExtensions.MapAbpMcp"/>; not intended to be called directly.
     /// </summary>
-    public static void Map(IEndpointRouteBuilder endpoints, string basePath)
+    /// <param name="endpoints">The route builder to mount on.</param>
+    /// <param name="basePath">The base path (matches <see cref="AbpMcpOptions.Path"/>).</param>
+    /// <param name="requireAuthorization">
+    /// When true, both endpoints get <c>RequireAuthorization()</c>. The exposure decisions and
+    /// parameter schemas they reveal are the same application structure that gates authentication
+    /// on the MCP endpoint itself; they must follow the same auth posture.
+    /// </param>
+    public static void Map(IEndpointRouteBuilder endpoints, string basePath, bool requireAuthorization)
     {
         ArgumentNullException.ThrowIfNull(endpoints);
         ArgumentNullException.ThrowIfNull(basePath);
 
-        endpoints.MapGet(basePath + "/_discover", HandleDiscover);
-        endpoints.MapGet(basePath + "/_explain", HandleExplain);
+        var discover = endpoints.MapGet(basePath + "/_discover", HandleDiscover);
+        var explain = endpoints.MapGet(basePath + "/_explain", HandleExplain);
+
+        if (requireAuthorization)
+        {
+            discover.RequireAuthorization();
+            explain.RequireAuthorization();
+        }
     }
 
     private static async Task HandleDiscover(HttpContext context)
