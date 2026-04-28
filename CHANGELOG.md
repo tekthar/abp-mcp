@@ -6,7 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
-Nothing yet. The next changes after `v0.1.0-alpha` ship here.
+### Added
+- README: document `[McpTool(Description = ...)]` and `[McpTool(Name = ...)]` override patterns with examples, guidelines, and `_discover` verification step (resolves #15).
 
 ## [0.1.0-alpha] — 2026-04-26
 
