@@ -52,7 +52,7 @@ internal sealed class AbpMcpDispatcher : IAbpMcpDispatcher
         // but a stale agent could still target one by name. Re-check at the dispatcher boundary.
         if (_options.CurrentValue.DisabledTools.Contains(descriptor.Name))
         {
-            throw new AbpMcpToolException("DISABLED", $"Tool '{descriptor.Name}' is administratively disabled.");
+            throw new AbpMcpToolException(AbpMcpErrorCodes.Disabled, $"Tool '{descriptor.Name}' is administratively disabled.");
         }
 
         await EnsureAuthorizedAsync(httpContext, descriptor).ConfigureAwait(false);
@@ -83,7 +83,7 @@ internal sealed class AbpMcpDispatcher : IAbpMcpDispatcher
             var result = await _authorization.AuthorizeAsync(context.User, permission).ConfigureAwait(false);
             if (!result.Succeeded)
             {
-                throw new AbpMcpToolException("FORBIDDEN", $"Missing permission: {permission}");
+                throw new AbpMcpToolException(AbpMcpErrorCodes.Forbidden, $"Missing permission: {permission}");
             }
         }
     }
@@ -120,7 +120,7 @@ internal sealed class AbpMcpDispatcher : IAbpMcpDispatcher
 
             // Required parameter missing: surface a clear validation error to the agent.
             throw new AbpMcpToolException(
-                "VALIDATION_ERROR",
+                AbpMcpErrorCodes.ValidationError,
                 $"Missing required parameter '{parameter.Name}'.");
         }
 
@@ -160,24 +160,24 @@ internal sealed class AbpMcpDispatcher : IAbpMcpDispatcher
         {
             case AbpValidationException ve:
                 _logger.LogInformation(ex, "Tool {Tool} rejected invalid input", descriptor.Name);
-                return new AbpMcpToolException("VALIDATION_ERROR", ve.Message, ve);
+                return new AbpMcpToolException(AbpMcpErrorCodes.ValidationError, ve.Message, ve);
 
             case AbpAuthorizationException ae:
                 _logger.LogWarning(ex, "Tool {Tool} refused unauthorized caller", descriptor.Name);
-                return new AbpMcpToolException("FORBIDDEN", ae.Message, ae);
+                return new AbpMcpToolException(AbpMcpErrorCodes.Forbidden, ae.Message, ae);
 
             case BusinessException be:
                 // UserFriendlyException inherits BusinessException in ABP, so this branch handles both.
                 _logger.LogInformation(ex, "Tool {Tool} raised business exception {Code}", descriptor.Name, be.Code);
-                return new AbpMcpToolException(be.Code ?? "BUSINESS_ERROR", be.Message ?? string.Empty, be);
+                return new AbpMcpToolException(be.Code ?? AbpMcpErrorCodes.BusinessError, be.Message ?? string.Empty, be);
 
             case OperationCanceledException oce:
                 _logger.LogDebug(ex, "Tool {Tool} cancelled", descriptor.Name);
-                return new AbpMcpToolException("CANCELLED", "Operation cancelled.", oce);
+                return new AbpMcpToolException(AbpMcpErrorCodes.Cancelled, "Operation cancelled.", oce);
 
             default:
                 _logger.LogError(ex, "Tool {Tool} threw unhandled exception", descriptor.Name);
-                return new AbpMcpToolException("INTERNAL", "An internal error occurred.", ex);
+                return new AbpMcpToolException(AbpMcpErrorCodes.Internal, "An internal error occurred.", ex);
         }
     }
 }

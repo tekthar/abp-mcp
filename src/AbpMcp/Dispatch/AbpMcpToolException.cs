@@ -6,7 +6,7 @@ namespace AbpMcp.Dispatch;
 /// </summary>
 public sealed class AbpMcpToolException : Exception
 {
-    /// <summary>Stable error code (e.g. <c>FORBIDDEN</c>, <c>VALIDATION_ERROR</c>, <c>INTERNAL</c>).</summary>
+    /// <summary>Stable error code (see <see cref="AbpMcpErrorCodes"/>).</summary>
     public string Code { get; }
 
     /// <inheritdoc/>

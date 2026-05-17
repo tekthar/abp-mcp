@@ -123,7 +123,7 @@ public sealed class DispatcherInvocationTests : AbpMcpIntegrationTestBase
                 var act = async () => await dispatcher.InvokeAsync(descriptor!, args.RootElement, CancellationToken.None);
 
                 var thrown = await act.Should().ThrowAsync<AbpMcpToolException>();
-                thrown.Which.Code.Should().Be("DISABLED");
+                thrown.Which.Code.Should().Be(AbpMcpErrorCodes.Disabled);
 
                 // The DB must remain pristine — kill switch fires before service invocation.
                 var db = services.GetRequiredService<BookDbContext>();

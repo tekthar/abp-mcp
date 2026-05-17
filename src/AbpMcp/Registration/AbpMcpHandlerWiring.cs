@@ -86,12 +86,12 @@ internal sealed class AbpMcpHandlerWiring : IConfigureOptions<McpServerOptions>
 
         if (abpOptions.DisabledTools.Contains(toolName))
         {
-            return ErrorResult("DISABLED", $"Tool '{toolName}' is administratively disabled.");
+            return ErrorResult(AbpMcpErrorCodes.Disabled, $"Tool '{toolName}' is administratively disabled.");
         }
 
         if (!registry.TryGetByName(toolName, out var descriptor) || descriptor is null)
         {
-            return ErrorResult("UNKNOWN_TOOL", $"No tool named '{toolName}' is registered.");
+            return ErrorResult(AbpMcpErrorCodes.UnknownTool, $"No tool named '{toolName}' is registered.");
         }
 
         try
