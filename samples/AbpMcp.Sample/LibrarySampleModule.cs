@@ -1,3 +1,4 @@
+using AbpMcp.Addins;
 using AbpMcp.Sample.Library;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -33,6 +34,10 @@ public sealed class LibrarySampleModule : AbpModule
         // ConventionalControllers (so the api-definition provider can see its app services)
         // AND with abp-mcp's ExposedAssemblies filter (so the MCP scan scopes to it).
         services.AddAbpMcpAssembly(typeof(LibrarySampleModule).Assembly);
+
+        // A dynamic add-in that contributes a tool not backed by any single application service.
+        // This is the extension seam: register any number of IAbpMcpAddin to grow the MCP surface.
+        services.AddSingleton<IAbpMcpAddin, LibraryInsightsAddin>();
 
         Configure<AbpMcpOptions>(opts =>
         {

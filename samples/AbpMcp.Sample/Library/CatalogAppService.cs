@@ -136,9 +136,23 @@ public sealed class CatalogAppService : ICatalogAppService, ITransientDependency
 
 public interface ICatalogAppService : IApplicationService
 {
+    /// <summary>Search catalog titles by name, author, genre, or first-published year. Every filter field is optional; omit a field to leave it unconstrained.</summary>
+    /// <param name="filter">The search filter. Populate only the fields you want to constrain.</param>
     Task<IReadOnlyList<TitleDto>> SearchTitlesAsync(SearchTitlesDto filter);
+
+    /// <summary>Get a single title and its editions by id.</summary>
+    /// <param name="id">The title's unique id.</param>
     Task<TitleDto> GetTitleAsync(Guid id);
+
+    /// <summary>Add a new title to the catalog.</summary>
+    /// <param name="input">The title to create.</param>
     Task<TitleDto> AddTitleAsync(CreateTitleDto input);
+
+    /// <summary>Add a new edition (a specific format and ISBN) to an existing title.</summary>
+    /// <param name="input">The edition to create, including the id of the title it belongs to.</param>
     Task<EditionDto> AddEditionAsync(AddEditionDto input);
+
+    /// <summary>List the editions of a title that currently have at least one copy available to loan.</summary>
+    /// <param name="titleId">The title whose available editions to list.</param>
     Task<IReadOnlyList<EditionDto>> ListAvailableEditionsAsync(Guid titleId);
 }

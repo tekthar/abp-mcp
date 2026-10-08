@@ -1,9 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net9.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
+    <!-- TargetFrameworks (net9.0;net10.0) is inherited from Directory.Build.props. -->
     <IsPackable>false</IsPackable>
   </PropertyGroup>
 

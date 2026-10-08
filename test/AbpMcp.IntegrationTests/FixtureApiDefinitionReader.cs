@@ -20,35 +20,34 @@ internal sealed class FixtureApiDefinitionReader : IApiDefinitionReader
         var serviceType = typeof(BookAppService);
         return new[]
         {
-            BuildDescriptor(serviceType, nameof(BookAppService.CreateAsync), "Book_Create",
-                inputs: new[]
-                {
-                    ("input", typeof(CreateBookDto), required: true),
-                }),
-            BuildDescriptor(serviceType, nameof(BookAppService.GetListAsync), "Book_GetList",
-                inputs: Array.Empty<(string, Type, bool)>()),
+            BuildDescriptor(serviceType, nameof(BookAppService.CreateAsync), "Book_Create"),
+            BuildDescriptor(serviceType, nameof(BookAppService.GetListAsync), "Book_GetList"),
         };
     }
 
-    private static ToolDescriptor BuildDescriptor(
-        Type serviceType,
-        string methodName,
-        string toolName,
-        IReadOnlyList<(string Name, Type Type, bool Required)> inputs)
+    private static ToolDescriptor BuildDescriptor(Type serviceType, string methodName, string toolName)
     {
         var method = serviceType.GetMethod(methodName, BindingFlags.Public | BindingFlags.Instance)
             ?? throw new InvalidOperationException($"Fixture method '{methodName}' not found on {serviceType.Name}.");
 
+        // Build the input schema with the real JsonSchemaMapper over the actual method parameters,
+        // so the fixture advertises exactly what production would (walked DTOs, enums, constraints)
+        // rather than a stand-in opaque object. Mirrors ToolDescriptorBuilder.BuildInputSchema.
         var properties = new JsonObject();
         var required = new JsonArray();
-        foreach (var (name, type, isRequired) in inputs)
+        var names = new List<string>();
+        foreach (var parameter in method.GetParameters())
         {
-            properties[name] = type == typeof(CreateBookDto)
-                ? new JsonObject { ["type"] = "object" }
-                : new JsonObject { ["type"] = "string" };
-            if (isRequired)
+            if (parameter.ParameterType == typeof(CancellationToken))
             {
-                required.Add(name);
+                continue;
+            }
+
+            names.Add(parameter.Name!);
+            properties[parameter.Name!] = JsonSchemaMapper.MapParameter(parameter);
+            if (JsonSchemaMapper.IsRequiredParameter(parameter))
+            {
+                required.Add(parameter.Name);
             }
         }
 
@@ -69,7 +68,7 @@ internal sealed class FixtureApiDefinitionReader : IApiDefinitionReader
             ServiceType = serviceType,
             Method = method,
             InputSchema = schema,
-            ParameterNames = inputs.Select(i => i.Name).ToArray(),
+            ParameterNames = names,
             RequiredPermissions = Array.Empty<string>(),
         };
     }

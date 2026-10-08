@@ -1,4 +1,6 @@
 using System.Security.Claims;
+using AbpMcp.Addins;
+using AbpMcp.IntegrationTests.Addins;
 using AbpMcp.IntegrationTests.Books;
 using AbpMcp.Metadata;
 using Microsoft.AspNetCore.Http;
@@ -62,6 +64,10 @@ public sealed class AbpMcpTestModule : AbpModule
         //   2) exposes the test's IServiceProvider as RequestServices (so the dispatcher
         //      resolves IBookAppService from the same scope as the test)
         services.AddSingleton<IHttpContextAccessor, TestHttpContextAccessor>();
+
+        // A dynamic add-in: contributes a handler-backed tool and enriches a discovered one.
+        // Proves the pipeline runs and dynamic tools dispatch through the same path as service methods.
+        services.AddSingleton<IAbpMcpAddin, GreetingAddin>();
 
         // Tell abp-mcp to scan only this assembly. Honors AbpMcpOptions.ExposedAssemblies.
         Configure<AbpMcpOptions>(opts =>
