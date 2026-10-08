@@ -35,6 +35,22 @@ public sealed class AbpMcpOptions
     public string? ToolNamePrefix { get; set; }
 
     /// <summary>
+    /// When true (default), the built-in output-schema add-in advertises a JSON Schema for each
+    /// method-backed tool's structured result (derived from its return type). Agents use it to know
+    /// what a tool returns before calling it — helpful for chaining. Set false to omit output schemas.
+    /// </summary>
+    public bool IncludeOutputSchema { get; set; } = true;
+
+    /// <summary>
+    /// When true (default), the built-in XML-documentation add-in fills tool and parameter descriptions
+    /// from the host's XML doc comments (the <c>&lt;summary&gt;</c>/<c>&lt;param&gt;</c> your services already
+    /// carry, emitted when <c>GenerateDocumentationFile</c> is on). An explicit
+    /// <c>[McpTool(Description = ...)]</c> always wins, and the add-in is a silent no-op when no XML doc
+    /// file is present. Set false to keep mechanical descriptions.
+    /// </summary>
+    public bool UseXmlDocumentation { get; set; } = true;
+
+    /// <summary>
     /// Server name advertised to MCP clients in the <c>initialize</c> response.
     /// Defaults to the hosting assembly's product name or <c>"abp-mcp"</c>.
     /// </summary>

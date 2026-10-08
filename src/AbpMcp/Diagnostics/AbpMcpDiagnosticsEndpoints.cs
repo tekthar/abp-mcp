@@ -86,11 +86,13 @@ public static class AbpMcpDiagnosticsEndpoints
     {
         name = tool.Name,
         description = tool.Description,
-        service = tool.ServiceType.FullName,
-        method = tool.Method.Name,
+        kind = tool.Handler is not null ? "dynamic" : "service",
+        service = tool.ServiceType?.FullName,
+        method = tool.Method?.Name,
         parameters = tool.ParameterNames,
         required_permissions = tool.RequiredPermissions,
         input_schema = tool.InputSchema,
+        output_schema = tool.OutputSchema,
     };
 
     private static List<object> BuildExplanations(IServiceProvider services, string? serviceFilter)

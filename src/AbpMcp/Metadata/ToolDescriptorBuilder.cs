@@ -1,7 +1,6 @@
 using System.Reflection;
 using System.Text.Json.Nodes;
 using AbpMcp.Attributes;
-using Volo.Abp.Authorization.Permissions;
 using Volo.Abp.Http.Modeling;
 
 namespace AbpMcp.Metadata;
@@ -10,7 +9,8 @@ namespace AbpMcp.Metadata;
 /// Default implementation of <see cref="IToolDescriptorBuilder"/>.
 /// Produces tool names of the form <c>{ServiceShortName}_{MethodShortName}</c>,
 /// pulls descriptions from XML docs or the <c>[McpTool(Description = ...)]</c> override,
-/// and emits JSON Schema for the input object by translating the method's parameters.
+/// and emits JSON Schema for the input object by translating the method's parameters via
+/// <see cref="JsonSchemaMapper"/>.
 /// </summary>
 internal sealed class ToolDescriptorBuilder : IToolDescriptorBuilder
 {
@@ -59,14 +59,16 @@ internal sealed class ToolDescriptorBuilder : IToolDescriptorBuilder
 
         foreach (var parameter in method.GetParameters())
         {
-            if (IsIgnorable(parameter.ParameterType))
+            // The cancellation token is supplied by the dispatcher, never by the agent.
+            if (parameter.ParameterType == typeof(CancellationToken))
             {
                 continue;
             }
 
             names.Add(parameter.Name!);
-            properties[parameter.Name!] = JsonSchemaMapper.Map(parameter.ParameterType);
-            if (!parameter.HasDefaultValue && !IsNullable(parameter.ParameterType))
+            properties[parameter.Name!] = JsonSchemaMapper.MapParameter(parameter);
+
+            if (JsonSchemaMapper.IsRequiredParameter(parameter))
             {
                 required.Add(parameter.Name);
             }
@@ -85,12 +87,6 @@ internal sealed class ToolDescriptorBuilder : IToolDescriptorBuilder
 
         return (schema, names);
     }
-
-    private static bool IsIgnorable(Type t) =>
-        t == typeof(CancellationToken);
-
-    private static bool IsNullable(Type t) =>
-        !t.IsValueType || Nullable.GetUnderlyingType(t) is not null;
 
     private static IReadOnlyList<string> ResolvePermissions(Type serviceType, MethodInfo method)
     {
@@ -117,99 +113,5 @@ internal sealed class ToolDescriptorBuilder : IToolDescriptorBuilder
         }
 
         return permissions;
-    }
-}
-
-/// <summary>
-/// Maps .NET parameter types to JSON Schema fragments. Kept internal and simple for v0.1.
-/// Full coverage (collections, complex DTOs with recursion, polymorphism) lives in the
-/// test matrix and will be extended deliberately, type family by type family.
-/// </summary>
-internal static class JsonSchemaMapper
-{
-    public static JsonObject Map(Type type)
-    {
-        var underlying = Nullable.GetUnderlyingType(type);
-        if (underlying is not null)
-        {
-            var inner = Map(underlying);
-            inner["nullable"] = true;
-            return inner;
-        }
-
-        if (type == typeof(string) || type == typeof(Guid) || type == typeof(DateTime) || type == typeof(DateTimeOffset))
-        {
-            var result = new JsonObject { ["type"] = "string" };
-            if (type == typeof(Guid)) result["format"] = "uuid";
-            else if (type == typeof(DateTime) || type == typeof(DateTimeOffset)) result["format"] = "date-time";
-            return result;
-        }
-
-        if (type == typeof(bool))
-        {
-            return new JsonObject { ["type"] = "boolean" };
-        }
-
-        if (IsIntegerLike(type))
-        {
-            return new JsonObject { ["type"] = "integer" };
-        }
-
-        if (type == typeof(float) || type == typeof(double) || type == typeof(decimal))
-        {
-            return new JsonObject { ["type"] = "number" };
-        }
-
-        if (type.IsEnum)
-        {
-            var values = new JsonArray();
-            foreach (var name in Enum.GetNames(type))
-            {
-                values.Add(name);
-            }
-
-            return new JsonObject { ["type"] = "string", ["enum"] = values };
-        }
-
-        if (IsCollection(type, out var elementType) && elementType is not null)
-        {
-            return new JsonObject { ["type"] = "array", ["items"] = Map(elementType) };
-        }
-
-        // Fallback for complex types. v0.1 emits an opaque object schema; proper DTO walk is v1.0.
-        return new JsonObject { ["type"] = "object" };
-    }
-
-    private static bool IsIntegerLike(Type t) =>
-        t == typeof(int) || t == typeof(long) || t == typeof(short) ||
-        t == typeof(byte) || t == typeof(sbyte) || t == typeof(uint) ||
-        t == typeof(ulong) || t == typeof(ushort);
-
-    private static bool IsCollection(Type t, out Type? elementType)
-    {
-        if (t.IsArray)
-        {
-            elementType = t.GetElementType();
-            return true;
-        }
-
-        // The type itself might BE IEnumerable<T> (e.g. a method parameter typed IEnumerable<string>).
-        if (t.IsGenericType && t.GetGenericTypeDefinition() == typeof(IEnumerable<>))
-        {
-            elementType = t.GetGenericArguments()[0];
-            return true;
-        }
-
-        foreach (var iface in t.GetInterfaces())
-        {
-            if (iface.IsGenericType && iface.GetGenericTypeDefinition() == typeof(IEnumerable<>))
-            {
-                elementType = iface.GetGenericArguments()[0];
-                return true;
-            }
-        }
-
-        elementType = null;
-        return false;
     }
 }
