@@ -8,7 +8,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 Nothing yet. The next changes after `v0.2.0-alpha` ship here.
 
-## [0.2.0-alpha] — 2026-10-07
+## [0.2.0-alpha] — 2026-10-08
 
 Driven by requirements extracted from a real ABP deployment (see [docs/dynamic-addins.md](docs/dynamic-addins.md)). Three themes: make the advertised schema *true*, add a first-class extension surface, and support .NET 10 / ABP 10.
 
@@ -22,6 +22,7 @@ Driven by requirements extracted from a real ABP deployment (see [docs/dynamic-a
 - **`JsonSchemaMapper` is now public** — add-ins can map their own types (output schemas, dynamic-tool inputs) with the exact rules the core uses.
 - **Runtime tool-set changes + `tools/list_changed`** — `IDynamicMcpToolRegistry.Refresh()` rebuilds the catalog on demand (re-reads discovery, re-runs the add-in pipeline, swaps atomically), and the new `IAbpMcpToolListChangedNotifier` hook refreshes and then broadcasts MCP's `notifications/tools/list_changed` to connected sessions so agents re-read `tools/list` without reconnecting. This is what lets a plugin's tools appear or disappear at runtime. Delivery requires the non-stateless HTTP transport (the default).
 - **Sample**: `LibraryInsightsAddin` contributes a dynamic `Library_Overview` tool that aggregates catalog counts — a runnable example of the extension surface.
+- **Docs**: README documents the `[McpTool(Description = ...)]` and `[McpTool(Name = ...)]` override patterns with examples and a `_discover` verification step (resolves #15).
 
 ### Changed
 
