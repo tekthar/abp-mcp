@@ -36,17 +36,17 @@ internal sealed class XmlDocumentationStore
     {
         var members = new Dictionary<string, MemberDoc>(StringComparer.Ordinal);
 
-        foreach (var assembly in assemblies.Where(a => a is not null).Distinct())
-        {
-            var xmlPath = TryGetXmlPath(assembly);
-            if (xmlPath is null)
-            {
-                continue;
-            }
+        var xmlPaths = assemblies
+            .Where(a => a is not null)
+            .Distinct()
+            .Select(TryGetXmlPath)
+            .Where(path => path is not null);
 
+        foreach (var xmlPath in xmlPaths)
+        {
             try
             {
-                Merge(members, Parse(File.ReadAllText(xmlPath)));
+                Merge(members, Parse(File.ReadAllText(xmlPath!)));
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Xml.XmlException)
             {

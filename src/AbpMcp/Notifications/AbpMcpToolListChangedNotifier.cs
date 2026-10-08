@@ -44,9 +44,10 @@ internal sealed class AbpMcpToolListChangedNotifier : IAbpMcpToolListChangedNoti
                     .ConfigureAwait(false);
                 notified++;
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                // A send fails when the session is gone — drop it so the set stays current.
+                // Best-effort fan-out: a send fails when the session is gone — drop it and keep going so
+                // one dead session can't abort the broadcast. Caller cancellation (OCE) is NOT swallowed.
                 _sessions.Remove(server);
                 _logger.LogDebug(ex, "abp-mcp dropped a dead MCP session while broadcasting tools/list_changed.");
             }
