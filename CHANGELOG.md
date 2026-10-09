@@ -8,7 +8,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 Nothing yet. The next changes after `v0.2.0-alpha` ship here.
 
-## [0.2.0-alpha] — 2026-10-08
+## [0.2.0-alpha] — 2026-10-09
 
 Driven by requirements extracted from a real ABP deployment (see [docs/dynamic-addins.md](docs/dynamic-addins.md)). Three themes: make the advertised schema *true*, add a first-class extension surface, and support .NET 10 / ABP 10.
 

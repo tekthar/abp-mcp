@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/tekthar/abp-mcp/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/tekthar/abp-mcp/actions/workflows/ci.yml)
 [![NuGet](https://img.shields.io/nuget/v/AbpMcp.svg?logo=nuget)](https://www.nuget.org/packages/AbpMcp)
-[![License: MIT](https://img.shields.io/github/license/tekthar/abp-mcp.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/github/license/tekthar/abp-mcp.svg)](https://github.com/tekthar/abp-mcp/blob/main/LICENSE)
 
 > Auto-generate a Model Context Protocol (MCP) server from your ABP Framework application.
 > One NuGet, one line, and every `[McpTool]`-tagged Application Service is reachable by Claude, Cursor, and every MCP-compatible agent.
@@ -31,13 +31,13 @@ sequenceDiagram
 
 > A 30-second screen recording of this flow against the bundled Library sample is tracked as [#18](https://github.com/tekthar/abp-mcp/issues/18). PRs welcome.
 
-**Status:** pre-alpha (v0.1). Phase 1 scaffolding in place. Not yet published to NuGet.
+**Status:** alpha. Available on NuGet as a prerelease — `dotnet add package AbpMcp --prerelease`.
 
 ## Why
 
 Every ABP app already declares its business logic as `IApplicationService` with typed DTOs, permission attributes, XML docs, and multi-tenancy awareness. That is richer metadata than any OpenAPI spec. Generic OpenAPI → MCP converters produce low-quality servers that confuse agents. `abp-mcp` skips the OpenAPI middleman entirely and generates from ABP's own API description pipeline — the same one that powers ABP's TS/C# proxy generators.
 
-## Quickstart (v0.1.0-alpha)
+## Quickstart
 
 Install the NuGet (pre-release):
 
@@ -200,7 +200,7 @@ endpoint. Cross-tenant impersonation is intentionally *not* supported in v0.1.
 
 ## Design
 
-See [DESIGN.md](DESIGN.md) for the full design document:
+See [DESIGN.md](https://github.com/tekthar/abp-mcp/blob/main/DESIGN.md) for the full design document:
 - Problem statement and premises
 - Approaches considered (reflection runtime, source generator, LLM-enhanced descriptions)
 - Test plan
@@ -239,7 +239,7 @@ abp-mcp/
 
 ## Contributing
 
-Pre-alpha. Direct PRs welcome — please skim [CONTRIBUTING.md](CONTRIBUTING.md) before opening anything non-trivial. The non-negotiable design rules and the regression-test requirement are in there.
+Pre-alpha. Direct PRs welcome — please skim [CONTRIBUTING.md](https://github.com/tekthar/abp-mcp/blob/main/CONTRIBUTING.md) before opening anything non-trivial. The non-negotiable design rules and the regression-test requirement are in there.
 
 Open invitations:
 - JSON Schema mapping for complex DTOs (recursion handling, polymorphism)
@@ -250,12 +250,12 @@ Every bug fix lands with a regression test. No exceptions.
 
 ## Other docs
 
-- [DESIGN.md](DESIGN.md) — premises, alternatives considered, scope decisions
-- [CHANGELOG.md](CHANGELOG.md) — what shipped when
-- [CONTRIBUTING.md](CONTRIBUTING.md) — setup, design rules, PR process
-- [SECURITY.md](SECURITY.md) — vulnerability reporting (do NOT open a public issue for security)
-- [CLAUDE.md](CLAUDE.md) — project guidance for Claude Code & humans
+- [DESIGN.md](https://github.com/tekthar/abp-mcp/blob/main/DESIGN.md) — premises, alternatives considered, scope decisions
+- [CHANGELOG.md](https://github.com/tekthar/abp-mcp/blob/main/CHANGELOG.md) — what shipped when
+- [CONTRIBUTING.md](https://github.com/tekthar/abp-mcp/blob/main/CONTRIBUTING.md) — setup, design rules, PR process
+- [SECURITY.md](https://github.com/tekthar/abp-mcp/blob/main/SECURITY.md) — vulnerability reporting (do NOT open a public issue for security)
+- [CLAUDE.md](https://github.com/tekthar/abp-mcp/blob/main/CLAUDE.md) — project guidance for Claude Code & humans
 
 ## License
 
-[MIT](LICENSE).
+[MIT](https://github.com/tekthar/abp-mcp/blob/main/LICENSE).
