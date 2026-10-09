@@ -77,29 +77,29 @@ jobs:
             -p:Version=${{ steps.ver.outputs.version }} \
             -o artifacts
 
-      # Signing is OPTIONAL: these steps run only when a code-signing certificate is configured.
-      # Without the cert secrets the package publishes unsigned (nuget.org allows this).
+      # Signing is OPTIONAL and self-healing: it runs only when NUGET_SIGNING_CERTIFICATE_B64 is
+      # present AND decodes to a non-empty file. An unset, empty, or malformed secret publishes
+      # UNSIGNED rather than failing the release (nuget.org accepts unsigned packages).
       - name: Check signing availability
         id: signcheck
         env:
-          CERT_B64: ${{ secrets.NUGET_SIGNING_CERTIFICATE_B64 }}
-        run: |
-          if [[ -n "${CERT_B64}" ]]; then
-            echo "enabled=true" >> "$GITHUB_OUTPUT"
-            echo "Signing certificate configured — the package will be signed."
-          else
-            echo "enabled=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::No signing certificate configured (NUGET_SIGNING_CERTIFICATE_B64 unset) — publishing UNSIGNED."
-          fi
-
-      - name: Decode signing certificate
-        if: steps.signcheck.outputs.enabled == 'true'
-        env:
           NUGET_SIGNING_CERTIFICATE_B64: ${{ secrets.NUGET_SIGNING_CERTIFICATE_B64 }}
         run: |
-          # Place outside the workspace so the file isn't accidentally archived in any later step.
+          if [[ -z "${NUGET_SIGNING_CERTIFICATE_B64}" ]]; then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No signing certificate configured — publishing UNSIGNED."
+            exit 0
+          fi
+          # Decode here so a malformed secret disables signing instead of failing a later step.
           umask 077
-          echo "$NUGET_SIGNING_CERTIFICATE_B64" | base64 -d > "$RUNNER_TEMP/codesign.pfx"
+          if echo "${NUGET_SIGNING_CERTIFICATE_B64}" | base64 -d > "$RUNNER_TEMP/codesign.pfx" 2>/dev/null && [[ -s "$RUNNER_TEMP/codesign.pfx" ]]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+            echo "Signing certificate decoded — the package will be signed."
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            rm -f "$RUNNER_TEMP/codesign.pfx"
+            echo "::warning::NUGET_SIGNING_CERTIFICATE_B64 is set but is not valid base64 — publishing UNSIGNED. Delete or fix that secret to enable signing."
+          fi
 
       - name: Sign package
         if: steps.signcheck.outputs.enabled == 'true'
