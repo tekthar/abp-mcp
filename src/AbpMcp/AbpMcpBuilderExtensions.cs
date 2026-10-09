@@ -1,6 +1,8 @@
+using AbpMcp.Addins;
 using AbpMcp.Diagnostics;
 using AbpMcp.Dispatch;
 using AbpMcp.Metadata;
+using AbpMcp.Notifications;
 using AbpMcp.Registration;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -39,6 +41,17 @@ public static class AbpMcpBuilderExtensions
         services.TryAddSingleton<IDynamicMcpToolRegistry, DynamicMcpToolRegistry>();
         services.TryAddScoped<IAbpMcpDispatcher, AbpMcpDispatcher>();
         services.AddHttpContextAccessor();
+
+        // tools/list_changed support: track live sessions and expose the notifier hook so a host or
+        // plugin can rebuild the tool set and tell connected agents to re-read it at runtime.
+        services.TryAddSingleton<McpSessionRegistry>();
+        services.TryAddSingleton<IAbpMcpToolListChangedNotifier, AbpMcpToolListChangedNotifier>();
+
+        // Built-in add-ins. Registered via TryAddEnumerable so the set stays correct if AddAbpMcp
+        // runs more than once, and so host- or module-supplied IAbpMcpAddin registrations sit
+        // alongside these rather than replacing them.
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IAbpMcpAddin, XmlDocDescriptionAddin>());
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IAbpMcpAddin, OutputSchemaAddin>());
 
         // Microsoft MCP SDK registration. The caller still must have ASP.NET Core wired up.
         services.AddMcpServer().WithHttpTransport();

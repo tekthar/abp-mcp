@@ -15,17 +15,19 @@ concurrency:
 
 jobs:
   build-test:
-    name: Build & Test (.NET 9)
+    name: Build & Test (.NET 9 + 10)
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup .NET 9
+      - name: Setup .NET (9 + 10)
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 9.0.x
+          dotnet-version: |
+            9.0.x
+            10.0.x
 
       - name: Restore (cached)
         run: dotnet restore
@@ -59,10 +61,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup .NET 9
+      - name: Setup .NET (9 + 10)
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 9.0.x
+          dotnet-version: |
+            9.0.x
+            10.0.x
 
       - name: Pack (dry run, ensures the package is producible from main)
         run: |

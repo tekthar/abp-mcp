@@ -1,7 +1,8 @@
 name: Release
 
-# Triggered when a tag of the form v* is pushed (e.g. v0.1.0-alpha, v0.1.0, v1.2.3).
-# Builds, tests, packs, pushes to nuget.org, and creates a GitHub Release with the .nupkg attached.
+# Triggered when a tag of the form v* is pushed (e.g. v0.2.0-alpha, v1.2.3).
+# Builds, tests, packs, (optionally) signs, then publishes to nuget.org via Trusted Publishing
+# (OIDC — no API-key secret) and creates a GitHub Release with the .nupkg attached.
 on:
   push:
     tags:
@@ -9,12 +10,13 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Manual version to publish (e.g. 0.1.0-alpha). Used only when running by hand.'
+        description: 'Manual version to publish (e.g. 0.2.0-alpha). Used only when running by hand.'
         required: true
         type: string
 
 permissions:
   contents: write   # for `gh release create`
+  id-token: write   # for NuGet Trusted Publishing (OIDC token exchange)
 
 jobs:
   publish:
@@ -27,10 +29,12 @@ jobs:
         with:
           fetch-depth: 0   # required so `gh release create --generate-notes` can diff history
 
-      - name: Setup .NET 9
+      - name: Setup .NET (9 + 10)
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 9.0.x
+          dotnet-version: |
+            9.0.x
+            10.0.x
 
       - name: Resolve version
         id: ver
@@ -73,24 +77,37 @@ jobs:
             -p:Version=${{ steps.ver.outputs.version }} \
             -o artifacts
 
+      # Signing is OPTIONAL: these steps run only when a code-signing certificate is configured.
+      # Without the cert secrets the package publishes unsigned (nuget.org allows this).
+      - name: Check signing availability
+        id: signcheck
+        env:
+          CERT_B64: ${{ secrets.NUGET_SIGNING_CERTIFICATE_B64 }}
+        run: |
+          if [[ -n "${CERT_B64}" ]]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+            echo "Signing certificate configured — the package will be signed."
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No signing certificate configured (NUGET_SIGNING_CERTIFICATE_B64 unset) — publishing UNSIGNED."
+          fi
+
       - name: Decode signing certificate
+        if: steps.signcheck.outputs.enabled == 'true'
         env:
           NUGET_SIGNING_CERTIFICATE_B64: ${{ secrets.NUGET_SIGNING_CERTIFICATE_B64 }}
         run: |
-          if [[ -z "${NUGET_SIGNING_CERTIFICATE_B64}" ]]; then
-            echo "::error::NUGET_SIGNING_CERTIFICATE_B64 secret is missing. tekthar's nuget.org org requires every package be signed."
-            exit 1
-          fi
           # Place outside the workspace so the file isn't accidentally archived in any later step.
           umask 077
           echo "$NUGET_SIGNING_CERTIFICATE_B64" | base64 -d > "$RUNNER_TEMP/codesign.pfx"
 
       - name: Sign package
+        if: steps.signcheck.outputs.enabled == 'true'
         env:
           NUGET_SIGNING_PASSWORD: ${{ secrets.NUGET_SIGNING_PASSWORD }}
         run: |
           if [[ -z "${NUGET_SIGNING_PASSWORD}" ]]; then
-            echo "::error::NUGET_SIGNING_PASSWORD secret is missing."
+            echo "::error::A signing certificate is set but NUGET_SIGNING_PASSWORD is missing."
             exit 1
           fi
           dotnet nuget sign artifacts/*.nupkg \
@@ -100,23 +117,29 @@ jobs:
             --timestamp-hash-algorithm SHA256
 
       - name: Verify signature
+        if: steps.signcheck.outputs.enabled == 'true'
         run: dotnet nuget verify artifacts/*.nupkg --all
 
       - name: Wipe signing key from runner
-        if: always()
+        if: always() && steps.signcheck.outputs.enabled == 'true'
         run: |
           shred -u "$RUNNER_TEMP/codesign.pfx" 2>/dev/null || rm -f "$RUNNER_TEMP/codesign.pfx"
 
+      # Trusted Publishing: exchange the GitHub OIDC token for a short-lived nuget.org key.
+      # No NUGET_API_KEY secret — authorization comes from the Trusted Publisher policy on
+      # nuget.org (Package Owner: Tekthar, repo tekthar/abp-mcp, workflow release.yml).
+      # If this step fails with an auth/policy error, switch `user` to the account that owns
+      # the policy (e.g. the username that created it).
+      - name: NuGet login (Trusted Publishing)
+        id: nugetlogin
+        uses: NuGet/login@v1
+        with:
+          user: Tekthar
+
       - name: Push to nuget.org
-        env:
-          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
         run: |
-          if [[ -z "${NUGET_API_KEY}" ]]; then
-            echo "::error::NUGET_API_KEY secret is not set. Add it under Settings > Secrets and variables > Actions."
-            exit 1
-          fi
           dotnet nuget push "artifacts/*.nupkg" \
-            --api-key "$NUGET_API_KEY" \
+            --api-key "${{ steps.nugetlogin.outputs.NUGET_API_KEY }}" \
             --source https://api.nuget.org/v3/index.json \
             --skip-duplicate
 
@@ -124,7 +147,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # Pre-releases are anything containing a hyphen (e.g. 0.1.0-alpha).
+          # Pre-releases are anything containing a hyphen (e.g. 0.2.0-alpha).
           PRERELEASE_FLAG=""
           if [[ "${{ steps.ver.outputs.version }}" == *-* ]]; then
             PRERELEASE_FLAG="--prerelease"

@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using AbpMcp.Dispatch;
 using AbpMcp.Metadata;
+using AbpMcp.Notifications;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
@@ -25,13 +26,16 @@ namespace AbpMcp.Registration;
 internal sealed class AbpMcpHandlerWiring : IConfigureOptions<McpServerOptions>
 {
     private readonly IServiceProvider _rootServices;
+    private readonly McpSessionRegistry _sessions;
     private readonly ILogger<AbpMcpHandlerWiring> _logger;
 
     public AbpMcpHandlerWiring(
         IServiceProvider rootServices,
+        McpSessionRegistry sessions,
         ILogger<AbpMcpHandlerWiring> logger)
     {
         _rootServices = rootServices;
+        _sessions = sessions;
         _logger = logger;
     }
 
@@ -45,6 +49,8 @@ internal sealed class AbpMcpHandlerWiring : IConfigureOptions<McpServerOptions>
         RequestContext<ListToolsRequestParams> context,
         CancellationToken cancellationToken)
     {
+        TrackSession(context.Server);
+
         var (services, user) = ResolveRequestServices();
         var registry = services.GetRequiredService<IDynamicMcpToolRegistry>();
         var authorization = services.GetRequiredService<IAuthorizationService>();
@@ -75,6 +81,8 @@ internal sealed class AbpMcpHandlerWiring : IConfigureOptions<McpServerOptions>
         RequestContext<CallToolRequestParams> context,
         CancellationToken cancellationToken)
     {
+        TrackSession(context.Server);
+
         var requestParams = context.Params
             ?? throw new InvalidOperationException("CallTool request received without params.");
         var toolName = requestParams.Name;
@@ -106,6 +114,18 @@ internal sealed class AbpMcpHandlerWiring : IConfigureOptions<McpServerOptions>
         {
             _logger.LogInformation(tex, "Tool {Tool} returned error {Code}", toolName, tex.Code);
             return ErrorResult(tex.Code, tex.Message);
+        }
+    }
+
+    /// <summary>
+    /// Record the session's server so <see cref="Notifications.IAbpMcpToolListChangedNotifier"/> can
+    /// later push <c>notifications/tools/list_changed</c> to it. Seen on every request; idempotent.
+    /// </summary>
+    private void TrackSession(McpServer? server)
+    {
+        if (server is not null)
+        {
+            _sessions.Track(server);
         }
     }
 
@@ -154,12 +174,22 @@ internal sealed class AbpMcpHandlerWiring : IConfigureOptions<McpServerOptions>
         return true;
     }
 
-    private static Tool ToProtocolTool(ToolDescriptor descriptor) => new()
+    private static Tool ToProtocolTool(ToolDescriptor descriptor)
     {
-        Name = descriptor.Name,
-        Description = descriptor.Description,
-        InputSchema = JsonSerializer.SerializeToElement(descriptor.InputSchema),
-    };
+        var tool = new Tool
+        {
+            Name = descriptor.Name,
+            Description = descriptor.Description,
+            InputSchema = JsonSerializer.SerializeToElement(descriptor.InputSchema),
+        };
+
+        if (descriptor.OutputSchema is not null)
+        {
+            tool.OutputSchema = JsonSerializer.SerializeToElement(descriptor.OutputSchema);
+        }
+
+        return tool;
+    }
 
     /// <summary>
     /// MCP transports surface tool arguments as a JSON object. The dispatcher accepts a single

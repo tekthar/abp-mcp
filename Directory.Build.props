@@ -1,6 +1,7 @@
 <Project>
   <PropertyGroup>
-    <TargetFramework>net9.0</TargetFramework>
+    <!-- Multi-targeted: net9.0 keeps existing ABP 9.2 users working; net10.0 adds ABP 10 support. -->
+    <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -9,6 +10,20 @@
     <NoWarn>$(NoWarn);CS1591</NoWarn>
     <Deterministic>true</Deterministic>
     <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
+  </PropertyGroup>
+
+  <!-- Per-target dependency versions. net10 pins ABP 10.1 (the version the first production
+       consumer runs); net9 stays on ABP 9.2. Referenced as $(AbpVersion)/$(EfCoreVersion)/
+       $(MsExtVersion) from each csproj so there is one place to bump. -->
+  <PropertyGroup Condition="'$(TargetFramework)' == 'net10.0'">
+    <AbpVersion>10.1.*</AbpVersion>
+    <EfCoreVersion>10.0.*</EfCoreVersion>
+    <MsExtVersion>10.0.*</MsExtVersion>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(TargetFramework)' != 'net10.0'">
+    <AbpVersion>9.2.*</AbpVersion>
+    <EfCoreVersion>9.0.*</EfCoreVersion>
+    <MsExtVersion>9.0.*</MsExtVersion>
   </PropertyGroup>
 
   <PropertyGroup Label="Package metadata">
@@ -22,6 +37,6 @@
          our audience are "abp" and "mcp"; the rest are second-order matches. -->
     <PackageTags>abp;abp-framework;mcp;model-context-protocol;claude;ai;agents;dotnet;aspnetcore</PackageTags>
     <PackageReleaseNotes>See https://github.com/tekthar/abp-mcp/releases for release notes.</PackageReleaseNotes>
-    <Version>0.1.0-alpha</Version>
+    <Version>0.2.0-alpha</Version>
   </PropertyGroup>
 </Project>

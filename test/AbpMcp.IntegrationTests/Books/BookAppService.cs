@@ -24,6 +24,7 @@ public sealed class BookAppService : IBookAppService, ITransientDependency
             Title = input.Title,
             Author = input.Author,
             Year = input.Year,
+            Genre = input.Genre,
         };
 
         _db.Books.Add(entity);
@@ -35,6 +36,7 @@ public sealed class BookAppService : IBookAppService, ITransientDependency
             Title = entity.Title,
             Author = entity.Author,
             Year = entity.Year,
+            Genre = entity.Genre,
         };
     }
 
@@ -47,6 +49,7 @@ public sealed class BookAppService : IBookAppService, ITransientDependency
             Title = b.Title,
             Author = b.Author,
             Year = b.Year,
+            Genre = b.Genre,
         }).ToList();
     }
 }

@@ -1,3 +1,4 @@
+using AbpMcp.Addins;
 using AbpMcp.Metadata;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -17,6 +18,8 @@ namespace AbpMcp.Registration;
 internal sealed class DynamicMcpToolRegistry : IDynamicMcpToolRegistry
 {
     private readonly IApiDefinitionReader _reader;
+    private readonly IEnumerable<IAbpMcpAddin> _addins;
+    private readonly IServiceProvider _rootServices;
     private readonly AbpMcpOptions _options;
     private readonly ILogger<DynamicMcpToolRegistry> _logger;
 
@@ -26,10 +29,14 @@ internal sealed class DynamicMcpToolRegistry : IDynamicMcpToolRegistry
 
     public DynamicMcpToolRegistry(
         IApiDefinitionReader reader,
+        IEnumerable<IAbpMcpAddin> addins,
+        IServiceProvider rootServices,
         IOptions<AbpMcpOptions> options,
         ILogger<DynamicMcpToolRegistry> logger)
     {
         _reader = reader;
+        _addins = addins;
+        _rootServices = rootServices;
         _options = options.Value;
         _logger = logger;
     }
@@ -43,8 +50,11 @@ internal sealed class DynamicMcpToolRegistry : IDynamicMcpToolRegistry
             return;
         }
 
-        var descriptors = _reader.Read();
+        var descriptors = Discover();
 
+        // The "at least one tool" guard is a startup misconfiguration check, so it runs here and not
+        // in Refresh (a runtime rebuild must never throw the server down). It runs AFTER the add-in
+        // pipeline because a server whose entire surface is add-in-contributed tools is valid.
         if (descriptors.Count == 0 && _options.RequireAtLeastOneTool)
         {
             throw new AbpMcpConfigurationException(
@@ -55,14 +65,49 @@ internal sealed class DynamicMcpToolRegistry : IDynamicMcpToolRegistry
                 "Set AbpMcpOptions.RequireAtLeastOneTool = false to bypass this guard.");
         }
 
-        _tools = descriptors;
-        _byName = descriptors.ToDictionary(d => d.Name, StringComparer.Ordinal);
+        Swap(descriptors);
+        _initialized = true;
         _logger.LogInformation(
             "abp-mcp initialized with {ToolCount} tools: {Tools}",
             descriptors.Count,
             string.Join(", ", descriptors.Select(d => d.Name)));
+    }
 
+    public void Refresh()
+    {
+        var descriptors = Discover();
+        Swap(descriptors);
         _initialized = true;
+        _logger.LogInformation("abp-mcp tool set refreshed: now {ToolCount} tools.", descriptors.Count);
+    }
+
+    /// <summary>Re-read discovery and run the add-in pipeline. No side effects on registry state.</summary>
+    private IReadOnlyList<ToolDescriptor> Discover()
+    {
+        var descriptors = _reader.Read();
+
+        var addins = _addins.OrderBy(a => a.Order).ToArray();
+        if (addins.Length == 0)
+        {
+            return descriptors;
+        }
+
+        var context = new AbpMcpToolBuildContext(descriptors, _options, _rootServices);
+        foreach (var addin in addins)
+        {
+            addin.Contribute(context);
+        }
+
+        _logger.LogDebug("abp-mcp ran {AddinCount} add-in(s) over the tool set.", addins.Length);
+        return context.Build();
+    }
+
+    /// <summary>Swap in a freshly built tool set. Field writes are reference assignments, so concurrent
+    /// readers see either the old set or the new one, never a torn state.</summary>
+    private void Swap(IReadOnlyList<ToolDescriptor> descriptors)
+    {
+        _tools = descriptors;
+        _byName = descriptors.ToDictionary(d => d.Name, StringComparer.Ordinal);
     }
 
     public bool TryGetByName(string toolName, out ToolDescriptor? descriptor)
