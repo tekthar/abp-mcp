@@ -146,18 +146,26 @@ jobs:
             --source https://api.nuget.org/v3/index.json \
             --skip-duplicate
 
-      - name: Create GitHub Release
+      - name: Create or update GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          TAG="${{ steps.ver.outputs.tag }}"
           # Pre-releases are anything containing a hyphen (e.g. 0.2.0-alpha).
           PRERELEASE_FLAG=""
           if [[ "${{ steps.ver.outputs.version }}" == *-* ]]; then
             PRERELEASE_FLAG="--prerelease"
           fi
 
-          gh release create "${{ steps.ver.outputs.tag }}" \
-            --title "${{ steps.ver.outputs.tag }}" \
-            --generate-notes \
-            $PRERELEASE_FLAG \
-            artifacts/*.nupkg
+          # Idempotent: a re-run (e.g. after a fixed publish) updates the existing release's
+          # asset instead of failing because the release already exists.
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists — refreshing its package asset."
+            gh release upload "$TAG" artifacts/*.nupkg --clobber
+          else
+            gh release create "$TAG" \
+              --title "$TAG" \
+              --generate-notes \
+              $PRERELEASE_FLAG \
+              artifacts/*.nupkg
+          fi
