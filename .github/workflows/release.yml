@@ -127,14 +127,13 @@ jobs:
 
       # Trusted Publishing: exchange the GitHub OIDC token for a short-lived nuget.org key.
       # No NUGET_API_KEY secret — authorization comes from the Trusted Publisher policy on
-      # nuget.org (Package Owner: Tekthar, repo tekthar/abp-mcp, workflow release.yml).
-      # If this step fails with an auth/policy error, switch `user` to the account that owns
-      # the policy (e.g. the username that created it).
+      # nuget.org. `user` must be the username of the policy CREATOR (ak-itani), not the
+      # package-owner org (Tekthar) — nuget.org looks the policy up under the creator account.
       - name: NuGet login (Trusted Publishing)
         id: nugetlogin
         uses: NuGet/login@v1
         with:
-          user: Tekthar
+          user: ak-itani
 
       - name: Push to nuget.org
         run: |
