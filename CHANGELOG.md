@@ -6,9 +6,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
-Nothing yet. The next changes after `v0.2.0-alpha` ship here.
+Nothing yet. The next changes after `v0.2.1-alpha` ship here.
 
-## [0.2.0-alpha] — 2026-10-09
+## [0.2.1-alpha] — 2026-10-10
 
 Driven by requirements extracted from a real ABP deployment (see [docs/dynamic-addins.md](docs/dynamic-addins.md)). Three themes: make the advertised schema *true*, add a first-class extension surface, and support .NET 10 / ABP 10.
 
@@ -73,6 +73,6 @@ First public pre-release. Functional but pre-alpha — API surface will move bas
 - No Roslyn analyzer yet to flag `[McpTool]` on non-`IApplicationService` types at compile time. Targeted for v0.3.
 - `services.AddAbpMcpAssembly(asm)` already removes the two-step registration friction for the common case. Letting `AbpMcpOptions.ExposedAssemblies.Create(asm)` *itself* auto-register with `ConventionalControllers` (so the lambda-style `Configure<AbpMcpOptions>(...)` form needs no companion call either) is queued for v0.2.
 
-[Unreleased]: https://github.com/tekthar/abp-mcp/compare/v0.2.0-alpha...HEAD
-[0.2.0-alpha]: https://github.com/tekthar/abp-mcp/compare/v0.1.0-alpha...v0.2.0-alpha
+[Unreleased]: https://github.com/tekthar/abp-mcp/compare/v0.2.1-alpha...HEAD
+[0.2.1-alpha]: https://github.com/tekthar/abp-mcp/compare/v0.1.0-alpha...v0.2.1-alpha
 [0.1.0-alpha]: https://github.com/tekthar/abp-mcp/releases/tag/v0.1.0-alpha

@@ -37,6 +37,6 @@
          our audience are "abp" and "mcp"; the rest are second-order matches. -->
     <PackageTags>abp;abp-framework;mcp;model-context-protocol;claude;ai;agents;dotnet;aspnetcore</PackageTags>
     <PackageReleaseNotes>See https://github.com/tekthar/abp-mcp/releases for release notes.</PackageReleaseNotes>
-    <Version>0.2.0-alpha</Version>
+    <Version>0.2.1-alpha</Version>
   </PropertyGroup>
 </Project>
