@@ -34,13 +34,30 @@ public sealed class UnitOfWorkTests : AbpMcpIntegrationTestBase
     }
 
     [Fact]
-    public async Task SuccessfulTool_CommitsItsWrites()
+    public async Task SuccessfulTool_CommitsItsWrites_InATransaction()
     {
         await RunAsAuthenticatedAsync(async services =>
         {
-            await InvokeAsync(services, "Ledger_Record", """{"note":"kept"}""");
+            var observed = await InvokeAsync(services, "Ledger_Record", """{"note":"kept"}""");
 
+            observed.GetProperty("hasUnitOfWork").GetBoolean().Should().BeTrue();
+            observed.GetProperty("isTransactional").GetBoolean().Should().BeTrue();
             (await CountEntriesAsync(services)).Should().Be(1);
+            return true;
+        });
+    }
+
+    [Fact]
+    public async Task ReadTool_RunsInANonTransactionalUnitOfWork()
+    {
+        // ABP's REST UoW filter opens no transaction for a GET action. Every tools/call is a POST, so the
+        // dispatcher must decide by the parallel action's verb, or every Get/GetList tool pays for one.
+        await RunAsAuthenticatedAsync(async services =>
+        {
+            var observed = await InvokeAsync(services, "Ledger_GetSnapshot", "{}");
+
+            observed.GetProperty("hasUnitOfWork").GetBoolean().Should().BeTrue();
+            observed.GetProperty("isTransactional").GetBoolean().Should().BeFalse();
             return true;
         });
     }

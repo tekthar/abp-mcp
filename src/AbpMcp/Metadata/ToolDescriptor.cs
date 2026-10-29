@@ -71,4 +71,12 @@ public sealed record ToolDescriptor
     /// on both <c>tools/list</c> and <c>tools/call</c>.
     /// </summary>
     public IReadOnlyList<IAuthorizeData> AuthorizeData { get; init; } = Array.Empty<IAuthorizeData>();
+
+    /// <summary>
+    /// The HTTP verb ABP's api-definition assigns the parallel REST action (for example <c>GET</c>,
+    /// <c>POST</c>). The dispatcher uses it to mirror ABP's unit-of-work rule: a <c>GET</c> action runs in a
+    /// non-transactional unit of work, every other verb in a transactional one. Null for dynamic tools,
+    /// or when unknown — the dispatcher then falls back to ABP's method-name convention.
+    /// </summary>
+    public string? HttpMethod { get; init; }
 }

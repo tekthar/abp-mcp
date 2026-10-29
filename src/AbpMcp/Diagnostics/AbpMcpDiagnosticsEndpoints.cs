@@ -89,6 +89,7 @@ public static class AbpMcpDiagnosticsEndpoints
         kind = tool.Handler is not null ? "dynamic" : "service",
         service = tool.ServiceType?.FullName,
         method = tool.Method?.Name,
+        http_method = tool.HttpMethod,
         parameters = tool.ParameterNames,
         required_permissions = tool.RequiredPermissions,
         requires_authenticated_user = tool.AuthorizeData.Count > 0,

@@ -10,6 +10,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Volo.Abp;
 using Volo.Abp.Authorization;
+using Volo.Abp.Http;
 using Volo.Abp.Uow;
 using Volo.Abp.Validation;
 
@@ -80,7 +81,7 @@ internal sealed class AbpMcpDispatcher : IAbpMcpDispatcher
                     User = httpContext.User,
                 };
 
-                using var uow = BeginUnitOfWork(httpContext.RequestServices, method: null);
+                using var uow = BeginUnitOfWork(httpContext.RequestServices, descriptor);
                 var handled = await descriptor.Handler(invocation, cancellationToken).ConfigureAwait(false);
                 await CompleteAsync(uow, cancellationToken).ConfigureAwait(false);
                 return handled;
@@ -113,7 +114,7 @@ internal sealed class AbpMcpDispatcher : IAbpMcpDispatcher
                 .ConfigureAwait(false);
 
             // Disposed without CompleteAsync when the method throws, which discards its writes.
-            using var uow = BeginUnitOfWork(httpContext.RequestServices, descriptor.Method);
+            using var uow = BeginUnitOfWork(httpContext.RequestServices, descriptor);
 
             var raw = descriptor.Method.Invoke(service, invocationArgs);
             var result = await UnwrapAsync(raw).ConfigureAwait(false);
@@ -141,9 +142,9 @@ internal sealed class AbpMcpDispatcher : IAbpMcpDispatcher
     /// method (<c>IsDisabled</c>, <c>IsTransactional</c>, isolation level, timeout) and the host's
     /// <see cref="AbpUnitOfWorkDefaultOptions.TransactionBehavior"/>.
     /// </summary>
-    private static IUnitOfWork? BeginUnitOfWork(IServiceProvider services, MethodInfo? method)
+    private static IUnitOfWork? BeginUnitOfWork(IServiceProvider services, ToolDescriptor descriptor)
     {
-        var attribute = method is null ? null : UnitOfWorkHelper.GetUnitOfWorkAttributeOrNull(method);
+        var attribute = descriptor.Method is null ? null : UnitOfWorkHelper.GetUnitOfWorkAttributeOrNull(descriptor.Method);
         if (attribute?.IsDisabled == true)
         {
             return null;
@@ -152,11 +153,23 @@ internal sealed class AbpMcpDispatcher : IAbpMcpDispatcher
         var defaults = services.GetRequiredService<IOptions<AbpUnitOfWorkDefaultOptions>>().Value;
         return services.GetRequiredService<IUnitOfWorkManager>().Begin(new AbpUnitOfWorkOptions
         {
-            // tools/call arrives as a POST, which ABP's UoW filter treats as transactional.
-            IsTransactional = attribute?.IsTransactional ?? defaults.CalculateIsTransactional(autoValue: true),
+            IsTransactional = attribute?.IsTransactional ?? defaults.CalculateIsTransactional(autoValue: !IsReadAction(descriptor)),
             IsolationLevel = attribute?.IsolationLevel,
             Timeout = attribute?.Timeout,
         });
+    }
+
+    /// <summary>
+    /// ABP's UoW filter makes a <c>GET</c> action non-transactional and every other verb transactional.
+    /// Every tools/call arrives as a POST, so decide by the verb of the parallel REST action instead:
+    /// the api-definition's verb when known, else ABP's method-name convention (<c>Get*</c> is GET).
+    /// A dynamic tool with no verb is treated as a write.
+    /// </summary>
+    internal static bool IsReadAction(ToolDescriptor descriptor)
+    {
+        var verb = descriptor.HttpMethod
+            ?? (descriptor.Method is null ? null : HttpMethodHelper.GetConventionalVerbForMethodName(descriptor.Method.Name));
+        return string.Equals(verb, "GET", StringComparison.OrdinalIgnoreCase);
     }
 
     private static Task CompleteAsync(IUnitOfWork? uow, CancellationToken cancellationToken) =>

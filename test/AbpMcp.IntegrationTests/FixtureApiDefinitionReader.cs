@@ -25,6 +25,7 @@ internal sealed class FixtureApiDefinitionReader : IApiDefinitionReader
             BuildDescriptor(serviceType, nameof(BookAppService.GetListAsync), "Book_GetList"),
             BuildDescriptor(typeof(LedgerAppService), nameof(LedgerAppService.RecordAsync), "Ledger_Record"),
             BuildDescriptor(typeof(LedgerAppService), nameof(LedgerAppService.RecordThenFailAsync), "Ledger_RecordThenFail"),
+            BuildDescriptor(typeof(LedgerAppService), nameof(LedgerAppService.GetSnapshotAsync), "Ledger_GetSnapshot"),
         };
     }
 
