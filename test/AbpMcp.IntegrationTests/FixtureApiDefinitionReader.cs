@@ -1,6 +1,7 @@
 using System.Reflection;
 using System.Text.Json.Nodes;
 using AbpMcp.IntegrationTests.Books;
+using AbpMcp.IntegrationTests.Ledger;
 using AbpMcp.Metadata;
 
 namespace AbpMcp.IntegrationTests;
@@ -22,6 +23,8 @@ internal sealed class FixtureApiDefinitionReader : IApiDefinitionReader
         {
             BuildDescriptor(serviceType, nameof(BookAppService.CreateAsync), "Book_Create"),
             BuildDescriptor(serviceType, nameof(BookAppService.GetListAsync), "Book_GetList"),
+            BuildDescriptor(typeof(LedgerAppService), nameof(LedgerAppService.RecordAsync), "Ledger_Record"),
+            BuildDescriptor(typeof(LedgerAppService), nameof(LedgerAppService.RecordThenFailAsync), "Ledger_RecordThenFail"),
         };
     }
 
