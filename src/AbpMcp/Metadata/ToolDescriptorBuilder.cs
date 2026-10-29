@@ -1,6 +1,7 @@
 using System.Reflection;
 using System.Text.Json.Nodes;
 using AbpMcp.Attributes;
+using Microsoft.AspNetCore.Authorization;
 using Volo.Abp.Http.Modeling;
 
 namespace AbpMcp.Metadata;
@@ -29,7 +30,7 @@ internal sealed class ToolDescriptorBuilder : IToolDescriptorBuilder
         });
         var description = expose.Description ?? BuildDescription(method, action);
         var (schema, paramNames) = BuildInputSchema(method);
-        var permissions = ResolvePermissions(serviceType, method);
+        var (permissions, authorizeData) = ResolveAuthorization(serviceType, method);
 
         return new ToolDescriptor
         {
@@ -40,6 +41,7 @@ internal sealed class ToolDescriptorBuilder : IToolDescriptorBuilder
             InputSchema = schema,
             ParameterNames = paramNames,
             RequiredPermissions = permissions,
+            AuthorizeData = authorizeData,
         };
     }
 
@@ -88,30 +90,34 @@ internal sealed class ToolDescriptorBuilder : IToolDescriptorBuilder
         return (schema, names);
     }
 
-    private static IReadOnlyList<string> ResolvePermissions(Type serviceType, MethodInfo method)
+    /// <summary>
+    /// Harvest every authorization requirement the parallel HTTP endpoint would enforce.
+    /// Method and class <c>[Authorize]</c> data are additive (both must pass), matching ASP.NET Core
+    /// and ABP's <c>AuthorizationInterceptor</c>. Roles, schemes and policy-less (authenticated-only)
+    /// attributes are kept in the returned <see cref="IAuthorizeData"/> list, not dropped.
+    /// <c>[AllowAnonymous]</c> on the method clears everything, as ABP does; class-level
+    /// <c>[AllowAnonymous]</c> is deliberately not honored over an <c>[Authorize]</c> (fail closed).
+    /// </summary>
+    internal static (IReadOnlyList<string> Permissions, IReadOnlyList<IAuthorizeData> AuthorizeData) ResolveAuthorization(
+        Type serviceType,
+        MethodInfo method)
     {
-        // Respect [Authorize("perm")] declarations at both levels, methods winning over class.
-        var permissions = new List<string>();
-
-        foreach (var attr in method.GetCustomAttributes<Microsoft.AspNetCore.Authorization.AuthorizeAttribute>(inherit: true))
+        if (method.GetCustomAttributes(inherit: true).OfType<IAllowAnonymous>().Any())
         {
-            if (!string.IsNullOrEmpty(attr.Policy))
-            {
-                permissions.Add(attr.Policy!);
-            }
+            return (Array.Empty<string>(), Array.Empty<IAuthorizeData>());
         }
 
-        if (permissions.Count == 0)
-        {
-            foreach (var attr in serviceType.GetCustomAttributes<Microsoft.AspNetCore.Authorization.AuthorizeAttribute>(inherit: true))
-            {
-                if (!string.IsNullOrEmpty(attr.Policy))
-                {
-                    permissions.Add(attr.Policy!);
-                }
-            }
-        }
+        var authorizeData = method.GetCustomAttributes(inherit: true).OfType<IAuthorizeData>()
+            .Concat(serviceType.GetCustomAttributes(inherit: true).OfType<IAuthorizeData>())
+            .ToArray();
 
-        return permissions;
+        var permissions = authorizeData
+            .Select(a => a.Policy)
+            .Where(p => !string.IsNullOrEmpty(p))
+            .Select(p => p!)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+
+        return (permissions, authorizeData);
     }
 }

@@ -91,6 +91,9 @@ public static class AbpMcpDiagnosticsEndpoints
         method = tool.Method?.Name,
         parameters = tool.ParameterNames,
         required_permissions = tool.RequiredPermissions,
+        requires_authenticated_user = tool.AuthorizeData.Count > 0,
+        required_roles = tool.AuthorizeData.Select(a => a.Roles).Where(r => !string.IsNullOrEmpty(r)).ToArray(),
+        authentication_schemes = tool.AuthorizeData.Select(a => a.AuthenticationSchemes).Where(s => !string.IsNullOrEmpty(s)).ToArray(),
         input_schema = tool.InputSchema,
         output_schema = tool.OutputSchema,
     };
@@ -174,10 +177,11 @@ public static class AbpMcpDiagnosticsEndpoints
             return (false, $"Excluded: [McpIgnore] on {serviceType.Name}.");
         }
 
-        var methodIgnore = method.GetCustomAttribute<McpIgnoreAttribute>(inherit: true);
-        if (methodIgnore is not null)
+        var ignoringMember = McpIgnoreResolver.FindIgnoringMember(serviceType, method);
+        if (ignoringMember is not null)
         {
-            return (false, $"Excluded: [McpIgnore] on {serviceType.Name}.{method.Name}.");
+            var owner = ignoringMember.DeclaringType is { IsInterface: true } iface ? iface.Name : serviceType.Name;
+            return (false, $"Excluded: [McpIgnore] on {owner}.{method.Name}.");
         }
 
         var methodExpose = method.GetCustomAttribute<McpToolAttribute>(inherit: true);

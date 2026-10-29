@@ -1,6 +1,7 @@
 using System.Reflection;
 using System.Text.Json.Nodes;
 using AbpMcp.Addins;
+using Microsoft.AspNetCore.Authorization;
 
 namespace AbpMcp.Metadata;
 
@@ -54,6 +55,20 @@ public sealed record ToolDescriptor
     /// <summary>Ordered names of the parameters the method expects. Used to map JSON input into positional args. Empty for dynamic tools.</summary>
     public required IReadOnlyList<string> ParameterNames { get; init; }
 
-    /// <summary>Permission names required to call this tool. Empty means no permission required beyond authentication.</summary>
+    /// <summary>
+    /// Permission (policy) names required to call this tool; every one must be granted. For a
+    /// method-backed tool this is the union of the <c>[Authorize(Policy)]</c> names declared on the
+    /// method and on its service class. Add-ins may add to it. Empty means no named permission is
+    /// required — <see cref="AuthorizeData"/> can still demand an authenticated user, roles, or schemes.
+    /// </summary>
     public required IReadOnlyList<string> RequiredPermissions { get; init; }
+
+    /// <summary>
+    /// The complete <c>[Authorize]</c> data (policies, roles, authentication schemes, and policy-less
+    /// authenticated-only markers) declared on the method and its service class, combined the way
+    /// ASP.NET Core combines them for the parallel HTTP endpoint. Empty when the method is
+    /// <c>[AllowAnonymous]</c> or declares nothing. Enforced alongside <see cref="RequiredPermissions"/>
+    /// on both <c>tools/list</c> and <c>tools/call</c>.
+    /// </summary>
+    public IReadOnlyList<IAuthorizeData> AuthorizeData { get; init; } = Array.Empty<IAuthorizeData>();
 }

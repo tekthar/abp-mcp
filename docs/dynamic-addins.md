@@ -146,11 +146,15 @@ Every row is a real DTO shape from the source deployment. "Status" is this packa
 Learned from the same deployment; not in this pass. Several are now natural add-ins rather than core changes.
 
 - **`DiscoverySource.ApplicationServices`** — reflect application-service implementations directly, for hosts that use explicit controllers (so ABP's api-definition does not describe app services). Note: this crosses the current design rule "source of truth is the api-definition, not reflection" and needs an explicit decision.
-- **Dispatch through the contract interface** — resolve the interface (not the concrete class) so ABP's `AuthorizationInterceptor` (plus validation, UoW, auditing) runs on the call. Enforcement parity with a REST call.
-- **Authorization metadata harvesting** — union class + method `[Authorize]`, honor `[AllowAnonymous]`, record authentication-only tools.
+- **Dispatch through the contract interface** — resolve the interface (not the concrete class) so ABP's remaining interceptors (UoW, auditing, features) run on the call. Authorization and input validation are now enforced explicitly by the dispatcher (see below); UoW, auditing and `[RequiresFeature]` parity are still open.
 - **ABP-localized error mapping** — resolve coded `BusinessException`s to their localized text via `IExceptionToErrorInfoConverter`; surface `AbpValidationException` per-member detail; treat guard-clause `ArgumentException` as a caller error.
 - **RFC 9728 OAuth resource metadata** — an `AuthorizationPolicy` hook that emits `resource_metadata` on a 401, for MCP OAuth discovery.
 - **`ServerInstructions`** — server-level guidance advertised in the `initialize` response.
 - **File-type handling** — detect `IFormFile`/`Stream`/`IRemoteStreamContent` and skip them (or offer a JSON alternative), rather than emitting a garbage schema. A natural discovery/schema-band add-in.
 
 > **Shipped since first draft:** description enrichment from XML docs (`XmlDocDescriptionAddin`) — the metadata-band add-in that proves the "tracked follow-up → add-in" path. See Part 1.
+>
+> **Shipped (Unreleased):**
+> - *Authorization metadata harvesting*: class + method `[Authorize]` are unioned, roles/schemes/authenticated-only are enforced, and method-level `[AllowAnonymous]` is honored, through `IAbpMcpToolAuthorizer` on both list and call.
+> - *Input validation parity*: the dispatcher runs ABP's `IMethodInvocationValidator` before invoking, and `VALIDATION_ERROR` carries per-member detail.
+> - *Interface-declared `[McpIgnore]`*: honored by both exposure resolution and `_explain`.

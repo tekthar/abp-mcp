@@ -2,8 +2,8 @@ using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using AbpMcp.Addins;
+using AbpMcp.Authorization;
 using AbpMcp.Metadata;
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -32,18 +32,18 @@ internal sealed class AbpMcpDispatcher : IAbpMcpDispatcher
     };
 
     private readonly IHttpContextAccessor _httpContextAccessor;
-    private readonly IAuthorizationService _authorization;
+    private readonly IAbpMcpToolAuthorizer _authorizer;
     private readonly IOptionsMonitor<AbpMcpOptions> _options;
     private readonly ILogger<AbpMcpDispatcher> _logger;
 
     public AbpMcpDispatcher(
         IHttpContextAccessor httpContextAccessor,
-        IAuthorizationService authorization,
+        IAbpMcpToolAuthorizer authorizer,
         IOptionsMonitor<AbpMcpOptions> options,
         ILogger<AbpMcpDispatcher> logger)
     {
         _httpContextAccessor = httpContextAccessor;
-        _authorization = authorization;
+        _authorizer = authorizer;
         _options = options;
         _logger = logger;
     }
@@ -99,6 +99,15 @@ internal sealed class AbpMcpDispatcher : IAbpMcpDispatcher
 
         try
         {
+            // The concrete service is invoked by reflection, so ABP's ValidationInterceptor does not
+            // run for sealed or non-virtual app-service methods. Validate explicitly with the same
+            // ABP validator the interceptor uses (DataAnnotations, IValidatableObject, contributors),
+            // so a tools/call cannot pass input the parallel HTTP endpoint would reject.
+            var validator = httpContext.RequestServices.GetRequiredService<IMethodInvocationValidator>();
+            // ABP 9.2 annotates parameterValues as object[] (10.x as object?[]); null entries are what it validates.
+            await validator.ValidateAsync(new MethodInvocationValidationContext(service, descriptor.Method, (object[])invocationArgs))
+                .ConfigureAwait(false);
+
             var raw = descriptor.Method.Invoke(service, invocationArgs);
             var result = await UnwrapAsync(raw).ConfigureAwait(false);
             return SerializeResult(result);
@@ -115,13 +124,10 @@ internal sealed class AbpMcpDispatcher : IAbpMcpDispatcher
 
     private async Task EnsureAuthorizedAsync(HttpContext context, ToolDescriptor descriptor)
     {
-        foreach (var permission in descriptor.RequiredPermissions)
+        var result = await _authorizer.AuthorizeAsync(descriptor, context).ConfigureAwait(false);
+        if (!result.Succeeded)
         {
-            var result = await _authorization.AuthorizeAsync(context.User, permission).ConfigureAwait(false);
-            if (!result.Succeeded)
-            {
-                throw new AbpMcpToolException("FORBIDDEN", $"Missing permission: {permission}");
-            }
+            throw new AbpMcpToolException("FORBIDDEN", result.FailureReason ?? "Not authorized.");
         }
     }
 
@@ -191,13 +197,31 @@ internal sealed class AbpMcpDispatcher : IAbpMcpDispatcher
         return json;
     }
 
+    /// <summary>
+    /// ABP's message is a generic "arguments are not valid"; the per-member errors are what an agent
+    /// needs to correct its call. These are the same validation errors ABP's REST error response returns.
+    /// </summary>
+    private static string DescribeValidationErrors(AbpValidationException ve)
+    {
+        if (ve.ValidationErrors.Count == 0)
+        {
+            return ve.Message;
+        }
+
+        var details = ve.ValidationErrors.Select(e => e.MemberNames.Any()
+            ? $"{string.Join(", ", e.MemberNames)}: {e.ErrorMessage}"
+            : e.ErrorMessage ?? string.Empty);
+
+        return $"{ve.Message} {string.Join("; ", details)}";
+    }
+
     private AbpMcpToolException MapException(ToolDescriptor descriptor, Exception ex)
     {
         switch (ex)
         {
             case AbpValidationException ve:
                 _logger.LogInformation(ex, "Tool {Tool} rejected invalid input", descriptor.Name);
-                return new AbpMcpToolException("VALIDATION_ERROR", ve.Message, ve);
+                return new AbpMcpToolException("VALIDATION_ERROR", DescribeValidationErrors(ve), ve);
 
             case AbpAuthorizationException ae:
                 _logger.LogWarning(ex, "Tool {Tool} refused unauthorized caller", descriptor.Name);
