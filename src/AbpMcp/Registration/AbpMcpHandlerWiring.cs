@@ -1,9 +1,9 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using AbpMcp.Authorization;
 using AbpMcp.Dispatch;
 using AbpMcp.Metadata;
 using AbpMcp.Notifications;
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -51,9 +51,9 @@ internal sealed class AbpMcpHandlerWiring : IConfigureOptions<McpServerOptions>
     {
         TrackSession(context.Server);
 
-        var (services, user) = ResolveRequestServices();
+        var (services, http) = ResolveRequestServices();
         var registry = services.GetRequiredService<IDynamicMcpToolRegistry>();
-        var authorization = services.GetRequiredService<IAuthorizationService>();
+        var authorizer = services.GetRequiredService<IAbpMcpToolAuthorizer>();
         var abpOptions = services.GetRequiredService<IOptions<AbpMcpOptions>>().Value;
 
         registry.Initialize();
@@ -66,7 +66,9 @@ internal sealed class AbpMcpHandlerWiring : IConfigureOptions<McpServerOptions>
                 continue;
             }
 
-            if (!await IsAuthorizedAsync(authorization, user, descriptor).ConfigureAwait(false))
+            // Same gate the dispatcher applies before invoke, so list and call cannot disagree.
+            var authorized = await authorizer.AuthorizeAsync(descriptor, http).ConfigureAwait(false);
+            if (!authorized.Succeeded)
             {
                 continue;
             }
@@ -135,43 +137,16 @@ internal sealed class AbpMcpHandlerWiring : IConfigureOptions<McpServerOptions>
     /// surrounding request. Falling back to the root provider only happens in unit tests that drive
     /// the handlers directly.
     /// </summary>
-    private (IServiceProvider services, System.Security.Claims.ClaimsPrincipal? user) ResolveRequestServices()
+    private (IServiceProvider services, HttpContext? http) ResolveRequestServices()
     {
         var httpAccessor = _rootServices.GetRequiredService<IHttpContextAccessor>();
         var http = httpAccessor.HttpContext;
         if (http is not null)
         {
-            return (http.RequestServices, http.User);
+            return (http.RequestServices, http);
         }
 
-        return (_rootServices, user: null);
-    }
-
-    private static async Task<bool> IsAuthorizedAsync(
-        IAuthorizationService authorization,
-        System.Security.Claims.ClaimsPrincipal? user,
-        ToolDescriptor descriptor)
-    {
-        if (descriptor.RequiredPermissions.Count == 0)
-        {
-            return true;
-        }
-
-        if (user is null)
-        {
-            return false;
-        }
-
-        foreach (var permission in descriptor.RequiredPermissions)
-        {
-            var result = await authorization.AuthorizeAsync(user, permission).ConfigureAwait(false);
-            if (!result.Succeeded)
-            {
-                return false;
-            }
-        }
-
-        return true;
+        return (_rootServices, http: null);
     }
 
     private static Tool ToProtocolTool(ToolDescriptor descriptor)

@@ -73,7 +73,7 @@ internal sealed class ApiDefinitionReader : IApiDefinitionReader
                     }
 
                     var exposeOnMethod = method.GetCustomAttribute<McpToolAttribute>(inherit: true);
-                    var hiddenOnMethod = method.GetCustomAttribute<McpIgnoreAttribute>(inherit: true);
+                    var hiddenOnMethod = McpIgnoreResolver.FindIgnoringMember(serviceType, method);
 
                     var expose = exposeOnMethod ?? exposeOnClass;
                     if (expose is null || hiddenOnMethod is not null)

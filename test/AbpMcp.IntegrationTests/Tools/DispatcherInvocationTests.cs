@@ -164,6 +164,37 @@ public sealed class DispatcherInvocationTests : AbpMcpIntegrationTestBase
             .Should().Contain(new[] { "Fiction", "NonFiction", "Poetry" });
     }
 
+    [Theory]
+    [InlineData("""{"input":{"title":"Valid","author":"y","year":-5}}""", "Year")]
+    [InlineData("""{"input":{"title":"","author":"y","year":2024}}""", "Title")]
+    public async Task BookCreate_InvalidInput_IsRejectedBeforeInvocation(string json, string invalidMember)
+    {
+        // Regression: the dispatcher invokes the concrete (sealed, non-virtual) BookAppService by
+        // reflection, so ABP's ValidationInterceptor never ran and DataAnnotations the HTTP endpoint
+        // enforces were advertised in the schema but not enforced. The dispatcher now runs ABP's
+        // method-invocation validator before invoking.
+        await RunAsAuthenticatedAsync(async services =>
+        {
+            var dispatcher = services.GetRequiredService<IAbpMcpDispatcher>();
+            var registry = services.GetRequiredService<IDynamicMcpToolRegistry>();
+            registry.Initialize();
+            registry.TryGetByName("Book_Create", out var descriptor).Should().BeTrue();
+
+            using var args = JsonDocument.Parse(json);
+
+            var act = async () => await dispatcher.InvokeAsync(descriptor!, args.RootElement, CancellationToken.None);
+
+            var thrown = await act.Should().ThrowAsync<AbpMcpToolException>();
+            thrown.Which.Code.Should().Be("VALIDATION_ERROR");
+            thrown.Which.Message.Should().Contain(invalidMember);
+
+            // The method body must not have run.
+            var db = services.GetRequiredService<BookDbContext>();
+            (await db.Books.CountAsync()).Should().Be(0);
+            return true;
+        });
+    }
+
     [Fact]
     public async Task DisabledTool_ShortCircuitsWithCode()
     {

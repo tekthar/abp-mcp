@@ -1,4 +1,5 @@
 using AbpMcp.Addins;
+using AbpMcp.Authorization;
 using AbpMcp.Diagnostics;
 using AbpMcp.Dispatch;
 using AbpMcp.Metadata;
@@ -39,6 +40,7 @@ public static class AbpMcpBuilderExtensions
         services.TryAddSingleton<IApiDefinitionReader, ApiDefinitionReader>();
         services.TryAddSingleton<IToolDescriptorBuilder, ToolDescriptorBuilder>();
         services.TryAddSingleton<IDynamicMcpToolRegistry, DynamicMcpToolRegistry>();
+        services.TryAddTransient<IAbpMcpToolAuthorizer, AbpMcpToolAuthorizer>();
         services.TryAddScoped<IAbpMcpDispatcher, AbpMcpDispatcher>();
         services.AddHttpContextAccessor();
 

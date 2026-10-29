@@ -6,7 +6,22 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
-Nothing yet. The next changes after `v0.2.1-alpha` ship here.
+### Security
+
+- **`tools/list` and `tools/call` now enforce an app service's full `[Authorize]` model.** Previously only `[Authorize(Policy)]` names were honored: a method policy *replaced* the class policy, and `Roles`, `AuthenticationSchemes` and policy-less (authenticated-only) `[Authorize]` were dropped. Because tools are invoked on the concrete service by reflection, no MVC filter or ABP interceptor filled the gap. Method and class requirements are now combined with ASP.NET Core's own `AuthorizationPolicy.CombineAsync`, matching the parallel HTTP endpoint. Method-level `[AllowAnonymous]` clears requirements as in ABP; class-level `[AllowAnonymous]` does not override an `[Authorize]`, so the check fails closed.
+- **Tool arguments are now validated before invocation.** The dispatcher runs ABP's `IMethodInvocationValidator` (DataAnnotations, `IValidatableObject`, registered validation contributors). Before, ABP's `ValidationInterceptor` never ran for sealed or non-virtual app-service methods, so constraints were advertised in the input schema but not enforced. Invalid input returns `VALIDATION_ERROR` and the method is not called.
+- **`[McpIgnore]` on a contract-interface method is now honored.** Exposure resolution, and the `/mcp/_explain` report, only looked at the concrete method, so an interface-declared `[McpIgnore]` was silently ignored under a class-level `[McpTool]`.
+
+### Added
+
+- `IAbpMcpToolAuthorizer` (`AbpMcp.Authorization`) — the single authorization gate shared by `tools/list` and `tools/call`; replaceable via DI.
+- `ToolDescriptor.AuthorizeData` — the complete harvested `[Authorize]` data for a tool. `/mcp/_discover` rows gain `requires_authenticated_user`, `required_roles` and `authentication_schemes`.
+
+### Changed
+
+- `ToolDescriptor.RequiredPermissions` is now the union of method and class `[Authorize(Policy)]` names.
+- `VALIDATION_ERROR` messages now include ABP's per-member validation errors.
+- Tools whose service methods carry `Roles`-only or policy-less `[Authorize]` are no longer listed to, or callable by, callers who do not meet those requirements. Hosts that relied on the old, looser behavior will see `FORBIDDEN`.
 
 ## [0.2.1-alpha] — 2026-10-10
 
