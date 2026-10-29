@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using AbpMcp.Attributes;
 
 namespace AbpMcp.Metadata;
@@ -27,8 +28,29 @@ internal static class McpIgnoreResolver
             return method;
         }
 
+        var ignored = IgnoredByInterface.GetValue(serviceType, BuildIgnoredByInterface);
+        return ignored.Count > 0 && ignored.TryGetValue(KeyOf(method), out var interfaceMethod)
+            ? interfaceMethod
+            : null;
+    }
+
+    // Built once per service type: implementing method -> the interface method carrying [McpIgnore].
+    // Attributes are fixed at compile time, so the result never goes stale. ConditionalWeakTable keeps
+    // collectible (plugin) types unloadable and is safe for concurrent first use.
+    private static readonly ConditionalWeakTable<Type, Dictionary<MethodKey, MethodInfo>> IgnoredByInterface = new();
+
+    private static Dictionary<MethodKey, MethodInfo> BuildIgnoredByInterface(Type serviceType)
+    {
+        var ignored = new Dictionary<MethodKey, MethodInfo>();
         foreach (var iface in serviceType.GetInterfaces())
         {
+            // Most interfaces on an ABP service are method-less markers or carry no [McpIgnore];
+            // skip building their interface map entirely.
+            if (!iface.GetMethods().Any(m => m.IsDefined(typeof(McpIgnoreAttribute), inherit: false)))
+            {
+                continue;
+            }
+
             InterfaceMapping map;
             try
             {
@@ -41,21 +63,19 @@ internal static class McpIgnoreResolver
 
             for (var i = 0; i < map.TargetMethods.Length; i++)
             {
-                if (IsSameMethod(map.TargetMethods[i], method) &&
-                    map.InterfaceMethods[i].GetCustomAttribute<McpIgnoreAttribute>() is not null)
+                if (map.InterfaceMethods[i].IsDefined(typeof(McpIgnoreAttribute), inherit: false))
                 {
-                    return map.InterfaceMethods[i];
+                    ignored.TryAdd(KeyOf(map.TargetMethods[i]), map.InterfaceMethods[i]);
                 }
             }
         }
 
-        return null;
+        return ignored;
     }
 
-    // Compare by identity rather than MethodInfo equality, which also compares ReflectedType and so
+    // Key by identity rather than MethodInfo equality, which also compares ReflectedType and so
     // can miss an inherited implementation obtained through a derived type.
-    private static bool IsSameMethod(MethodInfo left, MethodInfo right) =>
-        left.MetadataToken == right.MetadataToken &&
-        left.Module == right.Module &&
-        left.DeclaringType == right.DeclaringType;
+    private static MethodKey KeyOf(MethodInfo method) => new(method.Module, method.MetadataToken, method.DeclaringType);
+
+    private readonly record struct MethodKey(Module Module, int MetadataToken, Type? DeclaringType);
 }

@@ -47,6 +47,30 @@ public class McpIgnoreResolverTests
             .Should().BeNull();
     }
 
+    [Fact]
+    public void ResultsAreCachedPerServiceType()
+    {
+        var secret = typeof(HiddenService).GetMethod(nameof(HiddenService.Secret))!;
+        var otherSecret = typeof(OtherService).GetMethod(nameof(OtherService.Secret))!;
+
+        // Repeat lookups hit the per-type cache and must stay stable.
+        McpIgnoreResolver.FindIgnoringMember(typeof(HiddenService), secret).Should().NotBeNull();
+        McpIgnoreResolver.FindIgnoringMember(typeof(HiddenService), secret).Should().NotBeNull();
+
+        // A same-named method on a different service whose contract does not ignore it stays visible.
+        McpIgnoreResolver.FindIgnoringMember(typeof(OtherService), otherSecret).Should().BeNull();
+    }
+
+    private interface IOtherContract
+    {
+        void Secret();
+    }
+
+    private sealed class OtherService : IOtherContract
+    {
+        public void Secret() { }
+    }
+
     private interface IHiddenContract
     {
         [McpIgnore]
