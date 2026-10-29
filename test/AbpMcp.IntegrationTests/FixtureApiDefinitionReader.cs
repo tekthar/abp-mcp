@@ -26,6 +26,10 @@ internal sealed class FixtureApiDefinitionReader : IApiDefinitionReader
             BuildDescriptor(typeof(LedgerAppService), nameof(LedgerAppService.RecordAsync), "Ledger_Record"),
             BuildDescriptor(typeof(LedgerAppService), nameof(LedgerAppService.RecordThenFailAsync), "Ledger_RecordThenFail"),
             BuildDescriptor(typeof(LedgerAppService), nameof(LedgerAppService.GetSnapshotAsync), "Ledger_GetSnapshot"),
+            BuildDescriptor(typeof(LedgerAppService), nameof(LedgerAppService.RecordWithoutTransactionAsync), "Ledger_RecordWithoutTransaction"),
+            BuildDescriptor(typeof(LedgerAppService), nameof(LedgerAppService.GetLockedSnapshotAsync), "Ledger_GetLockedSnapshot"),
+            BuildDescriptor(typeof(LedgerAppService), nameof(LedgerAppService.GetUnmanagedSnapshotAsync), "Ledger_GetUnmanagedSnapshot"),
+            BuildDescriptor(typeof(LedgerImportAppService), nameof(LedgerImportAppService.ImportAsync), "LedgerImport_Import"),
         };
     }
 

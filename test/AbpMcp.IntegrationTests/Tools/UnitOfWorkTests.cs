@@ -62,6 +62,24 @@ public sealed class UnitOfWorkTests : AbpMcpIntegrationTestBase
         });
     }
 
+    [Theory]
+    [InlineData("Ledger_RecordWithoutTransaction", """{"note":"x"}""", true, false)] // method [UnitOfWork(false)] beats the write default
+    [InlineData("Ledger_GetLockedSnapshot", "{}", true, true)]                         // method [UnitOfWork(true)] beats the GET default
+    [InlineData("LedgerImport_Import", """{"note":"x"}""", true, false)]           // class-level [UnitOfWork(false)]
+    [InlineData("Ledger_GetUnmanagedSnapshot", "{}", false, false)]                    // [UnitOfWork(IsDisabled = true)]
+    public async Task UnitOfWorkAttribute_OverridesTheVerbDefault(
+        string toolName, string json, bool expectUnitOfWork, bool expectTransactional)
+    {
+        await RunAsAuthenticatedAsync(async services =>
+        {
+            var observed = await InvokeAsync(services, toolName, json);
+
+            observed.GetProperty("hasUnitOfWork").GetBoolean().Should().Be(expectUnitOfWork);
+            observed.GetProperty("isTransactional").GetBoolean().Should().Be(expectTransactional);
+            return true;
+        });
+    }
+
     private static async Task<JsonElement> InvokeAsync(IServiceProvider services, string toolName, string json)
     {
         var registry = services.GetRequiredService<IDynamicMcpToolRegistry>();
