@@ -3,10 +3,12 @@ using System.Text.Json;
 using AbpMcp.Attributes;
 using AbpMcp.Metadata;
 using AbpMcp.Registration;
+using AbpMcp.Transport;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Volo.Abp.Http.Modeling;
 
 namespace AbpMcp.Diagnostics;
@@ -45,6 +47,11 @@ public static class AbpMcpDiagnosticsEndpoints
 
         var discover = endpoints.MapGet(basePath + "/_discover", HandleDiscover);
         var explain = endpoints.MapGet(basePath + "/_explain", HandleExplain);
+
+        // Same browser-origin rule as the MCP endpoint (AbpMcpOptions.AllowedOrigins).
+        var options = endpoints.ServiceProvider.GetRequiredService<IOptions<AbpMcpOptions>>().Value;
+        McpOriginGuard.Apply(discover, options);
+        McpOriginGuard.Apply(explain, options);
 
         if (requireAuthorization)
         {

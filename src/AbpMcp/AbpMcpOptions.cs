@@ -22,6 +22,16 @@ public sealed class AbpMcpOptions
     public bool AllowAnonymous { get; set; }
 
     /// <summary>
+    /// Browser origins (<c>scheme://host[:port]</c>, e.g. <c>http://localhost:6274</c> for the MCP Inspector)
+    /// allowed to call the MCP and diagnostics endpoints. A request that carries an <c>Origin</c> header not
+    /// in this set is refused with 403, as the MCP transport spec requires, which stops a web page from
+    /// driving a local or intranet MCP server through the user's browser (DNS rebinding). Requests with no
+    /// <c>Origin</c> header (desktop agents, CLIs, server-to-server calls) are unaffected. Empty by default;
+    /// add <c>"*"</c> to accept any origin.
+    /// </summary>
+    public ISet<string> AllowedOrigins { get; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
     /// If true (default), startup fails loudly when the scan produces zero exposed tools.
     /// This catches misconfiguration (module not loaded, no <c>[McpTool]</c> anywhere,
     /// ABP's api-definition endpoint disabled) before it silently masquerades as a working server.
