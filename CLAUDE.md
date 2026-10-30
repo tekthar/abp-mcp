@@ -69,7 +69,7 @@ dotnet pack src/AbpMcp/AbpMcp.csproj -c Release -o artifacts/
 
 - `DynamicMcpToolRegistry.Initialize` builds descriptors and `AbpMcpHandlerWiring` surfaces them via the MCP SDK's `ListTools`/`CallTool` handlers. A future move to the SDK's programmatic tool-registration API (if/when it stabilizes — tracked upstream in `modelcontextprotocol/csharp-sdk#317`) is a one-file swap behind `IDynamicMcpToolRegistry`.
 - `JsonSchemaMapper` walks complex DTOs recursively (nested properties, enums, dictionaries, collections, DataAnnotation constraints). `required` follows ABP's `[Required]` contract, and a cycle guard plus a depth cap of 8 collapse self-referencing or very deep graphs to an opaque `{"type": "object"}`. Emitting `$ref`/`$defs` for recursion is not implemented.
-- `ApiDefinitionReader` honors `AbpMcpOptions.ExposedAssemblies` as a filter (registered → restrict; empty → scan everything ABP gave us). The convenience extension `services.AddAbpMcpAssembly(asm)` registers with both `AbpAspNetCoreMvcOptions.ConventionalControllers` and `AbpMcpOptions.ExposedAssemblies` in one call. Letting the lambda-style `Configure<AbpMcpOptions>(o => o.ExposedAssemblies.Create(asm))` *itself* auto-register with `ConventionalControllers` is queued for v0.2.
+- `ApiDefinitionReader` honors `AbpMcpOptions.ExposedAssemblies` as a filter (registered → restrict; empty → scan everything ABP gave us). The convenience extension `services.AddAbpMcpAssembly(asm)` registers with both `AbpAspNetCoreMvcOptions.ConventionalControllers` and `AbpMcpOptions.ExposedAssemblies` in one call. The lambda-style `Configure<AbpMcpOptions>(o => o.ExposedAssemblies.Create(asm))` alone does NOT register with `ConventionalControllers`, so it silently yields zero tools. The planned fix is module-graph auto-discovery (#55, v0.2), which supersedes the lambda-only fix (#9, closed).
 - No Claude Skill generator yet. That is the Approach C evolution; after v0.1 lands.
 - No build-time LLM description enhancement yet. Same — Approach C.
 
@@ -77,6 +77,7 @@ dotnet pack src/AbpMcp/AbpMcp.csproj -c Release -o artifacts/
 
 - Type/method predicate funcs (`opts.TypePredicate = type => ...`).
 - Include/exclude glob and regex filters per assembly.
+- Auto-discover `[McpTool]` assemblies from the ABP module graph (#55).
 - Custom rules engine with Order ranges (0-100 discovery, 100-500 metadata, 500-900 schema, 900+ security).
 - ABP Settings Management backing for `DisabledTools` so kill-switch is cross-instance.
 - Roslyn analyzer to flag `[McpTool]` on non-AppService at compile time (v0.3).
