@@ -54,7 +54,7 @@ internal sealed class AbpMcpHandlerWiring : IConfigureOptions<McpServerOptions>
         var (services, http) = ResolveRequestServices();
         var registry = services.GetRequiredService<IDynamicMcpToolRegistry>();
         var authorizer = services.GetRequiredService<IAbpMcpToolAuthorizer>();
-        var abpOptions = services.GetRequiredService<IOptions<AbpMcpOptions>>().Value;
+        var abpOptions = services.GetRequiredService<IOptionsMonitor<AbpMcpOptions>>().CurrentValue;
 
         registry.Initialize();
 
@@ -92,7 +92,7 @@ internal sealed class AbpMcpHandlerWiring : IConfigureOptions<McpServerOptions>
         var (services, _) = ResolveRequestServices();
         var registry = services.GetRequiredService<IDynamicMcpToolRegistry>();
         var dispatcher = services.GetRequiredService<IAbpMcpDispatcher>();
-        var abpOptions = services.GetRequiredService<IOptions<AbpMcpOptions>>().Value;
+        var abpOptions = services.GetRequiredService<IOptionsMonitor<AbpMcpOptions>>().CurrentValue;
 
         if (abpOptions.DisabledTools.Contains(toolName))
         {
