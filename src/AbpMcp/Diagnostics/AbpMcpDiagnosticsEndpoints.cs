@@ -96,7 +96,8 @@ public static class AbpMcpDiagnosticsEndpoints
         required_roles = tool.AuthorizeData.Select(a => a.Roles).Where(r => !string.IsNullOrEmpty(r)).ToArray(),
         authentication_schemes = tool.AuthorizeData.Select(a => a.AuthenticationSchemes).Where(s => !string.IsNullOrEmpty(s)).ToArray(),
         input_schema = tool.InputSchema,
-        output_schema = tool.OutputSchema,
+        // The schema as tools/list advertises it, so discovery matches the wire.
+        output_schema = StructuredResultEnvelope.GetOutputSchema(tool),
     };
 
     private static List<object> BuildExplanations(IServiceProvider services, string? serviceFilter)

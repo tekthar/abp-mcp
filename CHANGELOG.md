@@ -24,6 +24,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - `VALIDATION_ERROR` messages now include ABP's per-member validation errors.
 - Tools whose service methods carry `Roles`-only or policy-less `[Authorize]` are no longer listed to, or callable by, callers who do not meet those requirements. Hosts that relied on the old, looser behavior will see `FORBIDDEN`.
 
+### Fixed
+
+- **`tools/list` no longer fails when a tool returns a list.** With output schemas on (the default), a method returning `IReadOnlyList<T>` advertised `{"type":"array"}`. MCP requires an object, and `ModelContextProtocol` 1.2.0 throws on anything else, so the whole `tools/list` response failed and agents saw no tools. Non-object results are now wrapped as `{ "result": <value> }`: the output schema in `tools/list` and `/mcp/_discover` gets a required `result` property, and `structuredContent` from `tools/call` takes the same shape. Object-returning tools are unchanged. **Wire change:** clients reading `structuredContent` of list, scalar or `object`-returning tools must read `.result`.
+- **A tool disabled at runtime now disappears from `tools/list` (#13).** The `tools/list` and `tools/call` handlers read `IOptions<AbpMcpOptions>`, a cache separate from the `IOptionsMonitor` instance the dispatcher reads, so a tool added to `DisabledTools` was refused on call but still advertised. Both handlers now read `IOptionsMonitor<AbpMcpOptions>.CurrentValue`.
+
 ## [0.2.1-alpha] — 2026-10-10
 
 Driven by requirements extracted from a real ABP deployment (see [docs/dynamic-addins.md](docs/dynamic-addins.md)). Three themes: make the advertised schema *true*, add a first-class extension surface, and support .NET 10 / ABP 10.

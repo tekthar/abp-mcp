@@ -4,8 +4,6 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using ModelContextProtocol.Protocol;
-using ModelContextProtocol.Server;
-using NSubstitute;
 
 namespace AbpMcp.IntegrationTests.Tools;
 
@@ -24,22 +22,22 @@ public sealed class DisabledToolsHotReloadTests : AbpMcpIntegrationTestBase
     {
         await RunAsAuthenticatedAsync(async services =>
         {
-            var handlers = services.GetRequiredService<IOptions<McpServerOptions>>().Value.Handlers;
+            var mcp = new McpHandlers(services);
             var monitor = services.GetRequiredService<IOptionsMonitor<AbpMcpOptions>>();
 
-            (await ListToolNamesAsync(handlers)).Should().Contain(Tool);
+            (await ListNamesAsync(mcp)).Should().Contain(Tool);
 
             monitor.CurrentValue.DisabledTools.Add(Tool);
             try
             {
-                (await ListToolNamesAsync(handlers)).Should().NotContain(Tool);
+                (await ListNamesAsync(mcp)).Should().NotContain(Tool);
             }
             finally
             {
                 monitor.CurrentValue.DisabledTools.Remove(Tool);
             }
 
-            (await ListToolNamesAsync(handlers)).Should().Contain(Tool);
+            (await ListNamesAsync(mcp)).Should().Contain(Tool);
             return true;
         });
     }
@@ -49,17 +47,13 @@ public sealed class DisabledToolsHotReloadTests : AbpMcpIntegrationTestBase
     {
         await RunAsAuthenticatedAsync(async services =>
         {
-            var handlers = services.GetRequiredService<IOptions<McpServerOptions>>().Value.Handlers;
+            var mcp = new McpHandlers(services);
             var monitor = services.GetRequiredService<IOptionsMonitor<AbpMcpOptions>>();
 
             monitor.CurrentValue.DisabledTools.Add(Tool);
             try
             {
-                var request = new CallToolRequestParams { Name = Tool };
-                var context = new RequestContext<CallToolRequestParams>(
-                    Substitute.For<McpServer>(), new JsonRpcRequest { Method = RequestMethods.ToolsCall }, request);
-
-                var result = await handlers.CallToolHandler!(context, CancellationToken.None);
+                var result = await mcp.CallAsync(Tool);
 
                 result.IsError.Should().BeTrue();
                 result.Content.OfType<TextContentBlock>().Single().Text.Should().StartWith("[DISABLED]");
@@ -76,12 +70,6 @@ public sealed class DisabledToolsHotReloadTests : AbpMcpIntegrationTestBase
         });
     }
 
-    private static async Task<IReadOnlyList<string>> ListToolNamesAsync(McpServerHandlers handlers)
-    {
-        var context = new RequestContext<ListToolsRequestParams>(
-            Substitute.For<McpServer>(), new JsonRpcRequest { Method = RequestMethods.ToolsList }, new ListToolsRequestParams());
-
-        var result = await handlers.ListToolsHandler!(context, CancellationToken.None);
-        return result.Tools.Select(t => t.Name).ToList();
-    }
+    private static async Task<IReadOnlyList<string>> ListNamesAsync(McpHandlers mcp) =>
+        (await mcp.ListAsync()).Select(t => t.Name).ToList();
 }

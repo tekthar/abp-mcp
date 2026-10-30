@@ -110,7 +110,7 @@ internal sealed class AbpMcpHandlerWiring : IConfigureOptions<McpServerOptions>
             var result = await dispatcher.InvokeAsync(descriptor, arguments, cancellationToken)
                 .ConfigureAwait(false);
 
-            return SuccessResult(result);
+            return SuccessResult(StructuredResultEnvelope.WrapPayload(descriptor, result));
         }
         catch (AbpMcpToolException tex)
         {
@@ -158,9 +158,9 @@ internal sealed class AbpMcpHandlerWiring : IConfigureOptions<McpServerOptions>
             InputSchema = JsonSerializer.SerializeToElement(descriptor.InputSchema),
         };
 
-        if (descriptor.OutputSchema is not null)
+        if (StructuredResultEnvelope.GetOutputSchema(descriptor) is { } outputSchema)
         {
-            tool.OutputSchema = JsonSerializer.SerializeToElement(descriptor.OutputSchema);
+            tool.OutputSchema = JsonSerializer.SerializeToElement(outputSchema);
         }
 
         return tool;
