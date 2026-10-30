@@ -43,8 +43,8 @@ Regression rule: every bug fix lands with a regression test that would have caug
 
 Test tiers:
 - **Unit** (`test/AbpMcp.Tests`): xUnit, FluentAssertions, NSubstitute. Pure logic: Reader parses JSON, Builder emits schemas, naming conventions, enum maps.
-- **Integration** (planned): real DI container, `AbpIntegratedTestBase`, in-memory MCP client from the SDK.
-- **E2E** (planned): runs the sample host, hits `/mcp` with a real MCP client, verifies tool list and invocation.
+- **Integration** (`test/AbpMcp.IntegrationTests`): real ABP container (`AbpIntegratedTest`), invoking through `IAbpMcpDispatcher` and asserting side effects (DB rows, audit logs).
+- **E2E** (`test/AbpMcp.IntegrationTests/EndToEnd`): boots the Library sample on an in-memory `TestServer` (`SampleHost`) and drives `/mcp` with the SDK's own `McpClient`. Anything that crosses the SDK seam (`tools/list` shape, `structuredContent`, transport/origin rules, session lifetime) needs a test here — descriptor-level tests cannot see it. Test classes that boot the sample join `[Collection(SampleHostCollection.Name)]`.
 
 ## Code conventions
 

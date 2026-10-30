@@ -12,17 +12,34 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - **Tool arguments are now validated before invocation.** The dispatcher runs ABP's `IMethodInvocationValidator` (DataAnnotations, `IValidatableObject`, registered validation contributors). Before, ABP's `ValidationInterceptor` never ran for sealed or non-virtual app-service methods, so constraints were advertised in the input schema but not enforced. Invalid input returns `VALIDATION_ERROR` and the method is not called.
 - **`[McpIgnore]` on a contract-interface method is now honored.** Exposure resolution, and the `/mcp/_explain` report, only looked at the concrete method, so an interface-declared `[McpIgnore]` was silently ignored under a class-level `[McpTool]`.
 - **Every tool call now runs in an ABP unit of work.** The MCP endpoint is outside the MVC pipeline, whose UoW filter makes a REST call transactional, and the concrete service is invoked by reflection, so no interceptor opened one either. Each repository call committed on its own, and a tool that failed after a write left that write in place. The dispatcher now begins a unit of work around the call (dynamic add-in tools included) and completes it only on success. As on ABP's REST path, it is transactional unless the parallel action is a `GET` (`Get*`/`GetList*` reads), which run in a non-transactional unit of work. The verb comes from the api-definition (new `ToolDescriptor.HttpMethod`, also shown in `_discover`) and falls back to ABP's method-name convention. It honors `[UnitOfWork]` on the method (`IsDisabled`, `IsTransactional`, isolation level, timeout) and `AbpUnitOfWorkDefaultOptions.TransactionBehavior`, and joins a unit of work that is already active.
+- **`[RequiresFeature]`, `[RequiresGlobalFeature]` and audit logging now apply to every tool call.** ABP's feature and auditing interceptors only cover virtual methods on a class proxy, and the MCP endpoint is outside the MVC filters that cover the REST path, so for the non-virtual methods ABP's templates generate a tool call skipped feature checks and left no audit log. The dispatcher now mirrors `AbpFeatureActionFilter` (`FORBIDDEN` with the feature's code; `DISABLED` for a disabled global feature) and `AbpAuditActionFilter` (joins the request's audit scope, or opens and saves one as `AuditingInterceptor` does; honors `AbpAuditingOptions` and `[DisableAuditing]`). Both concerns are marked applied, so a virtual method is not checked or audited twice.
+- **The `Origin` header is now validated** on `/mcp`, `/mcp/_discover` and `/mcp/_explain`, as the MCP transport spec requires. A request whose `Origin` is not in the new `AbpMcpOptions.AllowedOrigins` gets `403`, so a web page can no longer drive a local or intranet MCP server through the user's browser (DNS rebinding). Requests without an `Origin` (desktop agents, CLIs, server-to-server) are unaffected.
+- **Ended MCP sessions are no longer kept in memory.** The `tools/list_changed` session registry held every session it had seen until a broadcast to it failed, so memory grew with every connect. Sessions are now held weakly and released once the SDK ends them.
+- **`/mcp/_discover` lists only the tools the caller is authorized for**, the same gate as `tools/list`, instead of every tool's schema and required permissions. **`/mcp/_explain` is scoped to `ExposedAssemblies`** instead of listing every app and framework service.
 
 ### Added
 
 - `IAbpMcpToolAuthorizer` (`AbpMcp.Authorization`) — the single authorization gate shared by `tools/list` and `tools/call`; replaceable via DI.
 - `ToolDescriptor.AuthorizeData` — the complete harvested `[Authorize]` data for a tool. `/mcp/_discover` rows gain `requires_authenticated_user`, `required_roles` and `authentication_schemes`.
+- `AbpMcpOptions.AllowedOrigins` — browser origins allowed to call the MCP and diagnostics endpoints (`"*"` for any).
+- `/mcp/_discover` rows gain `disabled`; `/mcp/_explain` responses gain `exposed_assemblies`.
+- End-to-end tests that drive the bundled sample with the MCP SDK's own client ([#54](https://github.com/tekthar/abp-mcp/issues/54)).
 
 ### Changed
 
 - `ToolDescriptor.RequiredPermissions` is now the union of method and class `[Authorize(Policy)]` names.
 - `VALIDATION_ERROR` messages now include ABP's per-member validation errors.
 - Tools whose service methods carry `Roles`-only or policy-less `[Authorize]` are no longer listed to, or callable by, callers who do not meet those requirements. Hosts that relied on the old, looser behavior will see `FORBIDDEN`.
+- Browser-based MCP clients (e.g. the MCP Inspector web UI) must now be listed in `AbpMcpOptions.AllowedOrigins`.
+- Nullable value types are described with JSON Schema type unions (`"type": ["integer", "null"]`) instead of OpenAPI's `"nullable": true` ([#52](https://github.com/tekthar/abp-mcp/issues/52)).
+- The error-mapping table moved from `AbpMcpDispatcher` to `AbpMcpExceptionMapper`.
+
+### Fixed
+
+- `tools/list` failed for every client when any tool returned a collection: MCP requires object output schemas. Non-object results are now advertised and returned wrapped as `{ "result": … }` ([#49](https://github.com/tekthar/abp-mcp/issues/49)).
+- A malformed tool argument now returns `VALIDATION_ERROR` naming the parameter and JSON path, instead of the SDK's generic error ([#50](https://github.com/tekthar/abp-mcp/issues/50)).
+- `EntityNotFoundException` maps to `NOT_FOUND` instead of `INTERNAL`; coded authorization failures report their code instead of the CLR default message ([#51](https://github.com/tekthar/abp-mcp/issues/51)).
+- The sample listens on `localhost:5000`, matching the README ([#53](https://github.com/tekthar/abp-mcp/issues/53)).
 
 ## [0.2.1-alpha] — 2026-10-10
 
