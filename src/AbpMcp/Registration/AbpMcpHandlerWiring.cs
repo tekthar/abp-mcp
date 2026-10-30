@@ -4,6 +4,7 @@ using AbpMcp.Authorization;
 using AbpMcp.Dispatch;
 using AbpMcp.Metadata;
 using AbpMcp.Notifications;
+using AbpMcp.Settings;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -54,14 +55,15 @@ internal sealed class AbpMcpHandlerWiring : IConfigureOptions<McpServerOptions>
         var (services, http) = ResolveRequestServices();
         var registry = services.GetRequiredService<IDynamicMcpToolRegistry>();
         var authorizer = services.GetRequiredService<IAbpMcpToolAuthorizer>();
-        var abpOptions = services.GetRequiredService<IOptionsMonitor<AbpMcpOptions>>().CurrentValue;
+        var disabledTools = await services.GetRequiredService<IDisabledToolsProvider>()
+            .GetDisabledToolsAsync(cancellationToken).ConfigureAwait(false);
 
         registry.Initialize();
 
         var visibleTools = new List<Tool>(registry.Tools.Count);
         foreach (var descriptor in registry.Tools)
         {
-            if (abpOptions.DisabledTools.Contains(descriptor.Name))
+            if (disabledTools.Contains(descriptor.Name))
             {
                 continue;
             }
@@ -92,9 +94,10 @@ internal sealed class AbpMcpHandlerWiring : IConfigureOptions<McpServerOptions>
         var (services, _) = ResolveRequestServices();
         var registry = services.GetRequiredService<IDynamicMcpToolRegistry>();
         var dispatcher = services.GetRequiredService<IAbpMcpDispatcher>();
-        var abpOptions = services.GetRequiredService<IOptionsMonitor<AbpMcpOptions>>().CurrentValue;
+        var disabledTools = await services.GetRequiredService<IDisabledToolsProvider>()
+            .GetDisabledToolsAsync(cancellationToken).ConfigureAwait(false);
 
-        if (abpOptions.DisabledTools.Contains(toolName))
+        if (disabledTools.Contains(toolName))
         {
             return ErrorResult("DISABLED", $"Tool '{toolName}' is administratively disabled.");
         }

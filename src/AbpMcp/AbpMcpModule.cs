@@ -3,12 +3,14 @@ using Microsoft.Extensions.DependencyInjection;
 using Volo.Abp;
 using Volo.Abp.AspNetCore.Mvc;
 using Volo.Abp.Modularity;
+using Volo.Abp.Settings;
 
 namespace AbpMcp;
 
 /// <summary>
 /// ABP module that registers abp-mcp services.
-/// Depends on <c>AbpAspNetCoreMvcModule</c> to ensure ABP's api-definition provider is available.
+/// Depends on <c>AbpAspNetCoreMvcModule</c> to ensure ABP's api-definition provider is available, and on
+/// <c>AbpSettingsModule</c> for the <c>AbpMcp.DisabledTools</c> kill-switch setting.
 /// </summary>
 /// <remarks>
 /// Module ceremony mirrors ABP's own modules:
@@ -20,7 +22,7 @@ namespace AbpMcp;
 ///         not on the first agent call.</item>
 /// </list>
 /// </remarks>
-[DependsOn(typeof(AbpAspNetCoreMvcModule))]
+[DependsOn(typeof(AbpAspNetCoreMvcModule), typeof(AbpSettingsModule))]
 public sealed class AbpMcpModule : AbpModule
 {
     /// <inheritdoc/>

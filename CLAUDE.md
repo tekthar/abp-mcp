@@ -79,7 +79,6 @@ dotnet pack src/AbpMcp/AbpMcp.csproj -c Release -o artifacts/
 - Include/exclude glob and regex filters per assembly.
 - Auto-discover `[McpTool]` assemblies from the ABP module graph (#55).
 - Custom rules engine with Order ranges (0-100 discovery, 100-500 metadata, 500-900 schema, 900+ security).
-- ABP Settings Management backing for `DisabledTools` so kill-switch is cross-instance.
 - Roslyn analyzer to flag `[McpTool]` on non-AppService at compile time (v0.3).
 
 ## When suggesting changes

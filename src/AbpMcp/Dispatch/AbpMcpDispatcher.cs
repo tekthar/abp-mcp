@@ -4,6 +4,7 @@ using System.Text.Json.Serialization;
 using AbpMcp.Addins;
 using AbpMcp.Authorization;
 using AbpMcp.Metadata;
+using AbpMcp.Settings;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -34,18 +35,18 @@ internal sealed class AbpMcpDispatcher : IAbpMcpDispatcher
 
     private readonly IHttpContextAccessor _httpContextAccessor;
     private readonly IAbpMcpToolAuthorizer _authorizer;
-    private readonly IOptionsMonitor<AbpMcpOptions> _options;
+    private readonly IDisabledToolsProvider _disabledTools;
     private readonly ILogger<AbpMcpDispatcher> _logger;
 
     public AbpMcpDispatcher(
         IHttpContextAccessor httpContextAccessor,
         IAbpMcpToolAuthorizer authorizer,
-        IOptionsMonitor<AbpMcpOptions> options,
+        IDisabledToolsProvider disabledTools,
         ILogger<AbpMcpDispatcher> logger)
     {
         _httpContextAccessor = httpContextAccessor;
         _authorizer = authorizer;
-        _options = options;
+        _disabledTools = disabledTools;
         _logger = logger;
     }
 
@@ -59,7 +60,8 @@ internal sealed class AbpMcpDispatcher : IAbpMcpDispatcher
 
         // Defense in depth: the handler wiring already filters disabled tools out of tools/list,
         // but a stale agent could still target one by name. Re-check at the dispatcher boundary.
-        if (_options.CurrentValue.DisabledTools.Contains(descriptor.Name))
+        var disabledTools = await _disabledTools.GetDisabledToolsAsync(cancellationToken).ConfigureAwait(false);
+        if (disabledTools.Contains(descriptor.Name))
         {
             throw new AbpMcpToolException("DISABLED", $"Tool '{descriptor.Name}' is administratively disabled.");
         }

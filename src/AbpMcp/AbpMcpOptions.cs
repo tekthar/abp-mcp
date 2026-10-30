@@ -77,10 +77,19 @@ public sealed class AbpMcpOptions
     /// no redeploy required for an emergency disable.
     /// </summary>
     /// <remarks>
-    /// In v0.2 this is intended to be backed by ABP's Settings Management for cross-instance
-    /// coordination. v0.1 keeps it in-process, which is enough for single-host deployments.
+    /// This set is per process. For a kill switch shared by every instance, use the
+    /// <see cref="Settings.AbpMcpSettingNames.DisabledTools"/> ABP setting; a tool listed in either
+    /// place is disabled.
     /// </remarks>
     public ISet<string> DisabledTools { get; } = new HashSet<string>(StringComparer.Ordinal);
+
+    /// <summary>
+    /// How long each instance caches the <see cref="Settings.AbpMcpSettingNames.DisabledTools"/>
+    /// setting before reading it again. Default 10 seconds: a tool disabled through the setting is
+    /// refused everywhere within this window, without a settings-store read on every tool call.
+    /// <see cref="TimeSpan.Zero"/> reads the setting on every request.
+    /// </summary>
+    public TimeSpan DisabledToolsSettingCacheDuration { get; set; } = TimeSpan.FromSeconds(10);
 
     /// <summary>
     /// Assemblies to scan for <c>[McpTool]</c>-tagged services. Mirrors ABP's

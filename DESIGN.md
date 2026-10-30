@@ -129,7 +129,7 @@ Strict precedence, highest first:
 4. **Conventions:** must be a public instance method on a type discovered via ABP's api-definition (i.e. an `IApplicationService` exposed as a controller).
 5. **Default exposure policy:** opt-in. No attribute → not exposed.
 
-Per-tool kill switch via `AbpMcpOptions.DisabledTools` (hot-reloadable through `IOptionsMonitor`). v0.2 backs this with ABP Settings Management for cross-instance coordination.
+Per-tool kill switch: a tool is disabled if it is in `AbpMcpOptions.DisabledTools` (per process, applied on the next request through `IOptionsMonitor`) or in the `AbpMcp.DisabledTools` ABP setting (global only, shared across instances when ABP Setting Management stores it behind a shared distributed cache, cached per instance for `AbpMcpOptions.DisabledToolsSettingCacheDuration`). `IDisabledToolsProvider` is the single source read by `tools/list`, `tools/call`, the dispatcher and `/mcp/_discover`. abp-mcp reads the setting through ABP's `ISettingProvider`, so it does not depend on the Setting Management module.
 
 ## Open Questions
 

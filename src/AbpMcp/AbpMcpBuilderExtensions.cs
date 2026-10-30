@@ -5,6 +5,7 @@ using AbpMcp.Dispatch;
 using AbpMcp.Metadata;
 using AbpMcp.Notifications;
 using AbpMcp.Registration;
+using AbpMcp.Settings;
 using AbpMcp.Transport;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -13,6 +14,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using ModelContextProtocol.Server;
+using Volo.Abp.Settings;
 
 namespace AbpMcp;
 
@@ -43,6 +45,19 @@ public static class AbpMcpBuilderExtensions
         services.TryAddSingleton<IDynamicMcpToolRegistry, DynamicMcpToolRegistry>();
         services.TryAddTransient<IAbpMcpToolAuthorizer, AbpMcpToolAuthorizer>();
         services.TryAddScoped<IAbpMcpDispatcher, AbpMcpDispatcher>();
+        services.TryAddSingleton(TimeProvider.System);
+        services.TryAddSingleton<IDisabledToolsProvider, DisabledToolsProvider>();
+
+        // The AbpMcp.DisabledTools setting definition. Registered explicitly rather than left to ABP's
+        // convention scan, so it exists for hosts that call AddAbpMcp without AbpMcpModule too.
+        services.TryAddTransient<AbpMcpSettingDefinitionProvider>();
+        services.Configure<AbpSettingOptions>(opts =>
+        {
+            if (!opts.DefinitionProviders.Contains<AbpMcpSettingDefinitionProvider>())
+            {
+                opts.DefinitionProviders.Add<AbpMcpSettingDefinitionProvider>();
+            }
+        });
         services.AddHttpContextAccessor();
 
         // tools/list_changed support: track live sessions and expose the notifier hook so a host or

@@ -24,6 +24,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - `AbpMcpOptions.AllowedOrigins` — browser origins allowed to call the MCP and diagnostics endpoints (`"*"` for any).
 - `/mcp/_discover` rows gain `disabled`; `/mcp/_explain` responses gain `exposed_assemblies`.
 - End-to-end tests that drive the bundled sample with the MCP SDK's own client ([#54](https://github.com/tekthar/abp-mcp/issues/54)).
+- **Cross-instance kill switch** ([#13](https://github.com/tekthar/abp-mcp/issues/13), Stage B). A new global ABP setting, `AbpMcp.DisabledTools` (`AbpMcpSettingNames.DisabledTools`), takes a comma-separated list of tool names to disable. With ABP Setting Management and a shared distributed cache (e.g. Redis), a global value applies to every instance; without it, the value can come from configuration (`Settings:AbpMcp.DisabledTools`). It is combined with `AbpMcpOptions.DisabledTools`, and tenant and user values are ignored. abp-mcp reads it through `ISettingProvider`, so it takes no dependency on the Setting Management module.
+- `AbpMcpOptions.DisabledToolsSettingCacheDuration` (default 10 seconds) — how long each instance caches the setting, so `tools/call` does not read the settings store every time.
+- `IDisabledToolsProvider` (`AbpMcp.Settings`) — the single source of disabled tools for `tools/list`, `tools/call`, the dispatcher and `/mcp/_discover`; replaceable via DI.
 
 ### Changed
 

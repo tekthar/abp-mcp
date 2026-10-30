@@ -204,6 +204,37 @@ Configure<AbpMcpOptions>(opts =>
 });
 ```
 
+## Disabling a tool (kill switch)
+
+To pull a misbehaving tool without a redeploy, disable it by name. A disabled tool
+disappears from `tools/list`, is refused on `tools/call` with `DISABLED`, and is
+flagged `"disabled": true` in `/mcp/_discover`.
+
+**Every instance at once** — set the `AbpMcp.DisabledTools` ABP setting to a
+comma-separated list of tool names. With [ABP Setting Management](https://abp.io/docs/latest/modules/setting-management)
+installed, set it as a global value and every instance picks it up within
+`AbpMcpOptions.DisabledToolsSettingCacheDuration` (default 10 seconds). This needs
+the shared distributed cache (e.g. Redis) a multi-instance ABP deployment already
+uses; with ABP's default in-memory cache, other instances keep their cached value
+until it expires.
+
+```csharp
+await settingManager.SetGlobalAsync(AbpMcpSettingNames.DisabledTools, "Loan_CheckOut,Member_Suspend");
+```
+
+Without Setting Management, put it in configuration instead:
+
+```json
+{ "Settings": { "AbpMcp.DisabledTools": "Loan_CheckOut,Member_Suspend" } }
+```
+
+The setting is global: tenant and user values are ignored.
+
+**This process only** — add names to `AbpMcpOptions.DisabledTools`. Changes made
+through `IOptionsMonitor<AbpMcpOptions>` apply on the next request.
+
+A tool listed in either place is disabled.
+
 ## Tenancy
 
 The MCP endpoint is mounted on the host's normal request pipeline, so ABP's
