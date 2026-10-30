@@ -42,6 +42,7 @@ internal sealed class ToolDescriptorBuilder : IToolDescriptorBuilder
             ParameterNames = paramNames,
             RequiredPermissions = permissions,
             AuthorizeData = authorizeData,
+            HttpMethod = action.HttpMethod,
         };
     }
 

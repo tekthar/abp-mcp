@@ -1,6 +1,7 @@
 using System.Reflection;
 using System.Text.Json.Nodes;
 using AbpMcp.IntegrationTests.Books;
+using AbpMcp.IntegrationTests.Ledger;
 using AbpMcp.Metadata;
 
 namespace AbpMcp.IntegrationTests;
@@ -22,6 +23,13 @@ internal sealed class FixtureApiDefinitionReader : IApiDefinitionReader
         {
             BuildDescriptor(serviceType, nameof(BookAppService.CreateAsync), "Book_Create"),
             BuildDescriptor(serviceType, nameof(BookAppService.GetListAsync), "Book_GetList"),
+            BuildDescriptor(typeof(LedgerAppService), nameof(LedgerAppService.RecordAsync), "Ledger_Record"),
+            BuildDescriptor(typeof(LedgerAppService), nameof(LedgerAppService.RecordThenFailAsync), "Ledger_RecordThenFail"),
+            BuildDescriptor(typeof(LedgerAppService), nameof(LedgerAppService.GetSnapshotAsync), "Ledger_GetSnapshot"),
+            BuildDescriptor(typeof(LedgerAppService), nameof(LedgerAppService.RecordWithoutTransactionAsync), "Ledger_RecordWithoutTransaction"),
+            BuildDescriptor(typeof(LedgerAppService), nameof(LedgerAppService.GetLockedSnapshotAsync), "Ledger_GetLockedSnapshot"),
+            BuildDescriptor(typeof(LedgerAppService), nameof(LedgerAppService.GetUnmanagedSnapshotAsync), "Ledger_GetUnmanagedSnapshot"),
+            BuildDescriptor(typeof(LedgerImportAppService), nameof(LedgerImportAppService.ImportAsync), "LedgerImport_Import"),
         };
     }
 

@@ -146,7 +146,7 @@ Every row is a real DTO shape from the source deployment. "Status" is this packa
 Learned from the same deployment; not in this pass. Several are now natural add-ins rather than core changes.
 
 - **`DiscoverySource.ApplicationServices`** — reflect application-service implementations directly, for hosts that use explicit controllers (so ABP's api-definition does not describe app services). Note: this crosses the current design rule "source of truth is the api-definition, not reflection" and needs an explicit decision.
-- **Dispatch through the contract interface** — resolve the interface (not the concrete class) so ABP's remaining interceptors (UoW, auditing, features) run on the call. Authorization and input validation are now enforced explicitly by the dispatcher (see below); UoW, auditing and `[RequiresFeature]` parity are still open.
+- **Dispatch through the contract interface** — resolve the interface (not the concrete class) so ABP's remaining interceptors (auditing, features) run on the call. Authorization, input validation and the unit of work are now applied explicitly by the dispatcher (see below); auditing and `[RequiresFeature]` parity are still open.
 - **ABP-localized error mapping** — resolve coded `BusinessException`s to their localized text via `IExceptionToErrorInfoConverter`; surface `AbpValidationException` per-member detail; treat guard-clause `ArgumentException` as a caller error.
 - **RFC 9728 OAuth resource metadata** — an `AuthorizationPolicy` hook that emits `resource_metadata` on a 401, for MCP OAuth discovery.
 - **`ServerInstructions`** — server-level guidance advertised in the `initialize` response.
@@ -158,3 +158,4 @@ Learned from the same deployment; not in this pass. Several are now natural add-
 > - *Authorization metadata harvesting*: class + method `[Authorize]` are unioned, roles/schemes/authenticated-only are enforced, and method-level `[AllowAnonymous]` is honored, through `IAbpMcpToolAuthorizer` on both list and call.
 > - *Input validation parity*: the dispatcher runs ABP's `IMethodInvocationValidator` before invoking, and `VALIDATION_ERROR` carries per-member detail.
 > - *Interface-declared `[McpIgnore]`*: honored by both exposure resolution and `_explain`.
+> - *Unit of work*: every tool call (service-backed or dynamic) runs in an ABP unit of work completed only on success, honoring `[UnitOfWork]` and `TransactionBehavior`.

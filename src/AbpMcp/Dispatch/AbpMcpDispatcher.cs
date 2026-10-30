@@ -10,6 +10,8 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Volo.Abp;
 using Volo.Abp.Authorization;
+using Volo.Abp.Http;
+using Volo.Abp.Uow;
 using Volo.Abp.Validation;
 
 namespace AbpMcp.Dispatch;
@@ -79,7 +81,10 @@ internal sealed class AbpMcpDispatcher : IAbpMcpDispatcher
                     User = httpContext.User,
                 };
 
-                return await descriptor.Handler(invocation, cancellationToken).ConfigureAwait(false);
+                using var uow = BeginUnitOfWork(httpContext.RequestServices, descriptor);
+                var handled = await descriptor.Handler(invocation, cancellationToken).ConfigureAwait(false);
+                await CompleteAsync(uow, cancellationToken).ConfigureAwait(false);
+                return handled;
             }
             catch (Exception ex) when (ex is not AbpMcpToolException)
             {
@@ -108,9 +113,16 @@ internal sealed class AbpMcpDispatcher : IAbpMcpDispatcher
             await validator.ValidateAsync(new MethodInvocationValidationContext(service, descriptor.Method, (object[])invocationArgs))
                 .ConfigureAwait(false);
 
+            // Disposed without CompleteAsync when the method throws, which discards its writes.
+            using var uow = BeginUnitOfWork(httpContext.RequestServices, descriptor);
+
             var raw = descriptor.Method.Invoke(service, invocationArgs);
             var result = await UnwrapAsync(raw).ConfigureAwait(false);
-            return SerializeResult(result);
+
+            // Serialize inside the unit of work so lazily loaded members still resolve.
+            var serialized = SerializeResult(result);
+            await CompleteAsync(uow, cancellationToken).ConfigureAwait(false);
+            return serialized;
         }
         catch (TargetInvocationException tie) when (tie.InnerException is not null)
         {
@@ -121,6 +133,47 @@ internal sealed class AbpMcpDispatcher : IAbpMcpDispatcher
             throw MapException(descriptor, ex);
         }
     }
+
+    /// <summary>
+    /// Open the unit of work ABP's MVC UoW filter opens for the parallel REST call. The MCP endpoint
+    /// is outside the MVC pipeline, and the concrete service is invoked by reflection, so without
+    /// this each repository call commits on its own and a tool that fails midway leaves partial writes.
+    /// Joins an already-active unit of work when there is one. Honors <c>[UnitOfWork]</c> on the
+    /// method (<c>IsDisabled</c>, <c>IsTransactional</c>, isolation level, timeout) and the host's
+    /// <see cref="AbpUnitOfWorkDefaultOptions.TransactionBehavior"/>.
+    /// </summary>
+    private static IUnitOfWork? BeginUnitOfWork(IServiceProvider services, ToolDescriptor descriptor)
+    {
+        var attribute = descriptor.Method is null ? null : UnitOfWorkHelper.GetUnitOfWorkAttributeOrNull(descriptor.Method);
+        if (attribute?.IsDisabled == true)
+        {
+            return null;
+        }
+
+        var defaults = services.GetRequiredService<IOptions<AbpUnitOfWorkDefaultOptions>>().Value;
+        return services.GetRequiredService<IUnitOfWorkManager>().Begin(new AbpUnitOfWorkOptions
+        {
+            IsTransactional = attribute?.IsTransactional ?? defaults.CalculateIsTransactional(autoValue: !IsReadAction(descriptor)),
+            IsolationLevel = attribute?.IsolationLevel,
+            Timeout = attribute?.Timeout,
+        });
+    }
+
+    /// <summary>
+    /// ABP's UoW filter makes a <c>GET</c> action non-transactional and every other verb transactional.
+    /// Every tools/call arrives as a POST, so decide by the verb of the parallel REST action instead:
+    /// the api-definition's verb when known, else ABP's method-name convention (<c>Get*</c> is GET).
+    /// A dynamic tool with no verb is treated as a write.
+    /// </summary>
+    internal static bool IsReadAction(ToolDescriptor descriptor)
+    {
+        var verb = descriptor.HttpMethod
+            ?? (descriptor.Method is null ? null : HttpMethodHelper.GetConventionalVerbForMethodName(descriptor.Method.Name));
+        return string.Equals(verb, "GET", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static Task CompleteAsync(IUnitOfWork? uow, CancellationToken cancellationToken) =>
+        uow is null ? Task.CompletedTask : uow.CompleteAsync(cancellationToken);
 
     private async Task EnsureAuthorizedAsync(HttpContext context, ToolDescriptor descriptor)
     {

@@ -2,9 +2,11 @@ using System.Security.Claims;
 using AbpMcp.Addins;
 using AbpMcp.IntegrationTests.Addins;
 using AbpMcp.IntegrationTests.Books;
+using AbpMcp.IntegrationTests.Ledger;
 using AbpMcp.Metadata;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Volo.Abp;
@@ -12,6 +14,7 @@ using Volo.Abp.Authorization;
 using Volo.Abp.Autofac;
 using Volo.Abp.BackgroundJobs;
 using Volo.Abp.Domain.Entities.Events.Distributed;
+using Volo.Abp.EntityFrameworkCore;
 using Volo.Abp.Modularity;
 
 namespace AbpMcp.IntegrationTests;
@@ -26,6 +29,7 @@ namespace AbpMcp.IntegrationTests;
     typeof(AbpAutofacModule),
     typeof(AbpAuthorizationModule),
     typeof(AbpBackgroundJobsAbstractionsModule),
+    typeof(AbpEntityFrameworkCoreModule),
     typeof(AbpMcpModule))]
 public sealed class AbpMcpTestModule : AbpModule
 {
@@ -58,6 +62,14 @@ public sealed class AbpMcpTestModule : AbpModule
         // Unique DB per module instance so tests don't bleed.
         var dbName = $"abp-mcp-tests-{Guid.NewGuid():N}";
         services.AddDbContext<BookDbContext>(opts => opts.UseInMemoryDatabase(dbName));
+
+        // Ledger fixture: an ABP DbContext with ABP repositories, so its writes go through ABP's unit
+        // of work (saved on CompleteAsync, discarded when the UoW is disposed without completing).
+        // The in-memory provider has no real transactions; ABP's deferred SaveChanges is what rolls back.
+        services.AddAbpDbContext<LedgerDbContext>(opts => opts.AddDefaultRepositories(includeAllEntities: true));
+        Configure<AbpDbContextOptions>(opts => opts.Configure<LedgerDbContext>(ctx => ctx.DbContextOptions
+            .UseInMemoryDatabase($"{dbName}-ledger")
+            .ConfigureWarnings(w => w.Ignore(InMemoryEventId.TransactionIgnoredWarning))));
 
         // Tests run without a real HTTP request. Provide a stand-in HttpContext that:
         //   1) carries an authenticated principal (so the dispatcher's auth check has a User)
