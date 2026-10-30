@@ -39,7 +39,7 @@ Example:
 - [ ] Source of truth stays ABP's api-definition (no new reflection-based scanning paths).
 - [ ] Tool exposure stays opt-in (no "expose everything" mode).
 - [ ] Permission filter on `tools/list` AND permission re-check on `tools/call` are both still in place.
-- [ ] No new catch-all exception handler in the dispatcher; new exception types added to `MapException` table if needed.
+- [ ] No new catch-all exception handler in the dispatcher; new exception types added to the `AbpMcpExceptionMapper` table if needed.
 - [ ] Stays in-process (no sidecar, no stdio transport).
 - [ ] Public surface stays ABP-idiomatic (mirrors `[RemoteService]` / `ConventionalControllers` patterns).
 - [ ] `/mcp/_discover` and `/mcp/_explain` still ship unconditionally.

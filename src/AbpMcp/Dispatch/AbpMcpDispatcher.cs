@@ -8,8 +8,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Volo.Abp;
-using Volo.Abp.Authorization;
+using Volo.Abp.Aspects;
 using Volo.Abp.Http;
 using Volo.Abp.Uow;
 using Volo.Abp.Validation;
@@ -88,7 +87,7 @@ internal sealed class AbpMcpDispatcher : IAbpMcpDispatcher
             }
             catch (Exception ex) when (ex is not AbpMcpToolException)
             {
-                throw MapException(descriptor, ex);
+                throw AbpMcpExceptionMapper.Map(descriptor, _logger, ex);
             }
         }
 
@@ -99,39 +98,71 @@ internal sealed class AbpMcpDispatcher : IAbpMcpDispatcher
                 $"Tool '{descriptor.Name}' has neither a dynamic handler nor a service method to invoke.");
         }
 
-        var service = httpContext.RequestServices.GetRequiredService(descriptor.ServiceType);
-        var invocationArgs = MapArguments(descriptor, arguments, cancellationToken);
-
         try
         {
-            // The concrete service is invoked by reflection, so ABP's ValidationInterceptor does not
-            // run for sealed or non-virtual app-service methods. Validate explicitly with the same
-            // ABP validator the interceptor uses (DataAnnotations, IValidatableObject, contributors),
-            // so a tools/call cannot pass input the parallel HTTP endpoint would reject.
-            var validator = httpContext.RequestServices.GetRequiredService<IMethodInvocationValidator>();
-            // ABP 9.2 annotates parameterValues as object[] (10.x as object?[]); null entries are what it validates.
-            await validator.ValidateAsync(new MethodInvocationValidationContext(service, descriptor.Method, (object[])invocationArgs))
-                .ConfigureAwait(false);
+            // Inside the try so a resolution or binding failure goes through the mapping table too.
+            var service = httpContext.RequestServices.GetRequiredService(descriptor.ServiceType);
+            var invocationArgs = MapArguments(descriptor, arguments, cancellationToken);
 
-            // Disposed without CompleteAsync when the method throws, which discards its writes.
-            using var uow = BeginUnitOfWork(httpContext.RequestServices, descriptor);
-
-            var raw = descriptor.Method.Invoke(service, invocationArgs);
-            var result = await UnwrapAsync(raw).ConfigureAwait(false);
-
-            // Serialize inside the unit of work so lazily loaded members still resolve.
-            var serialized = SerializeResult(result);
-            await CompleteAsync(uow, cancellationToken).ConfigureAwait(false);
-            return serialized;
+            // ABP's MVC filters mark these concerns as applied so the matching interceptors skip a
+            // virtual method; doing the same keeps a call from being feature-checked or audited twice.
+            using (AbpCrossCuttingConcerns.Applying(
+                service,
+                AbpCrossCuttingConcerns.Auditing,
+                AbpCrossCuttingConcerns.FeatureChecking,
+                AbpCrossCuttingConcerns.GlobalFeatureChecking))
+            {
+                // Same order as the MVC filter pipeline: audit wraps feature check, validation and unit of work.
+                return await AbpMcpAuditScope.RunAsync(
+                    httpContext.RequestServices,
+                    descriptor,
+                    invocationArgs,
+                    () => InvokeServiceAsync(httpContext.RequestServices, descriptor, service, invocationArgs, cancellationToken))
+                    .ConfigureAwait(false);
+            }
         }
         catch (TargetInvocationException tie) when (tie.InnerException is not null)
         {
-            throw MapException(descriptor, tie.InnerException);
+            throw AbpMcpExceptionMapper.Map(descriptor, _logger, tie.InnerException);
         }
         catch (Exception ex) when (ex is not AbpMcpToolException)
         {
-            throw MapException(descriptor, ex);
+            throw AbpMcpExceptionMapper.Map(descriptor, _logger, ex);
         }
+    }
+
+    /// <summary>
+    /// Feature check, validation, unit of work and the reflected call itself: everything ABP's MVC filters
+    /// do inside the audit scope for the parallel REST action.
+    /// </summary>
+    private static async Task<JsonElement> InvokeServiceAsync(
+        IServiceProvider services,
+        ToolDescriptor descriptor,
+        object service,
+        object?[] invocationArgs,
+        CancellationToken cancellationToken)
+    {
+        await AbpMcpFeatureGate.CheckAsync(services, descriptor).ConfigureAwait(false);
+
+        // The concrete service is invoked by reflection, so ABP's ValidationInterceptor does not
+        // run for sealed or non-virtual app-service methods. Validate explicitly with the same
+        // ABP validator the interceptor uses (DataAnnotations, IValidatableObject, contributors),
+        // so a tools/call cannot pass input the parallel HTTP endpoint would reject.
+        var validator = services.GetRequiredService<IMethodInvocationValidator>();
+        // ABP 9.2 annotates parameterValues as object[] (10.x as object?[]); null entries are what it validates.
+        await validator.ValidateAsync(new MethodInvocationValidationContext(service, descriptor.Method!, (object[])invocationArgs))
+            .ConfigureAwait(false);
+
+        // Disposed without CompleteAsync when the method throws, which discards its writes.
+        using var uow = BeginUnitOfWork(services, descriptor);
+
+        var raw = descriptor.Method!.Invoke(service, invocationArgs);
+        var result = await UnwrapAsync(raw).ConfigureAwait(false);
+
+        // Serialize inside the unit of work so lazily loaded members still resolve.
+        var serialized = SerializeResult(result);
+        await CompleteAsync(uow, cancellationToken).ConfigureAwait(false);
+        return serialized;
     }
 
     /// <summary>
@@ -204,7 +235,19 @@ internal sealed class AbpMcpDispatcher : IAbpMcpDispatcher
             if (arguments.ValueKind == JsonValueKind.Object &&
                 arguments.TryGetProperty(parameter.Name!, out var element))
             {
-                values[i] = element.Deserialize(parameter.ParameterType, JsonOptions);
+                try
+                {
+                    values[i] = element.Deserialize(parameter.ParameterType, JsonOptions);
+                }
+                catch (JsonException jex)
+                {
+                    // The path is relative to the agent's own argument, so it is safe and actionable to echo.
+                    throw new AbpMcpToolException(
+                        "VALIDATION_ERROR",
+                        $"Parameter '{parameter.Name}' does not match its schema (at '{jex.Path ?? "$"}').",
+                        jex);
+                }
+
                 continue;
             }
 
@@ -248,50 +291,5 @@ internal sealed class AbpMcpDispatcher : IAbpMcpDispatcher
 
         var json = JsonSerializer.SerializeToElement(result, result.GetType(), JsonOptions);
         return json;
-    }
-
-    /// <summary>
-    /// ABP's message is a generic "arguments are not valid"; the per-member errors are what an agent
-    /// needs to correct its call. These are the same validation errors ABP's REST error response returns.
-    /// </summary>
-    private static string DescribeValidationErrors(AbpValidationException ve)
-    {
-        if (ve.ValidationErrors.Count == 0)
-        {
-            return ve.Message;
-        }
-
-        var details = ve.ValidationErrors.Select(e => e.MemberNames.Any()
-            ? $"{string.Join(", ", e.MemberNames)}: {e.ErrorMessage}"
-            : e.ErrorMessage ?? string.Empty);
-
-        return $"{ve.Message} {string.Join("; ", details)}";
-    }
-
-    private AbpMcpToolException MapException(ToolDescriptor descriptor, Exception ex)
-    {
-        switch (ex)
-        {
-            case AbpValidationException ve:
-                _logger.LogInformation(ex, "Tool {Tool} rejected invalid input", descriptor.Name);
-                return new AbpMcpToolException("VALIDATION_ERROR", DescribeValidationErrors(ve), ve);
-
-            case AbpAuthorizationException ae:
-                _logger.LogWarning(ex, "Tool {Tool} refused unauthorized caller", descriptor.Name);
-                return new AbpMcpToolException("FORBIDDEN", ae.Message, ae);
-
-            case BusinessException be:
-                // UserFriendlyException inherits BusinessException in ABP, so this branch handles both.
-                _logger.LogInformation(ex, "Tool {Tool} raised business exception {Code}", descriptor.Name, be.Code);
-                return new AbpMcpToolException(be.Code ?? "BUSINESS_ERROR", be.Message ?? string.Empty, be);
-
-            case OperationCanceledException oce:
-                _logger.LogDebug(ex, "Tool {Tool} cancelled", descriptor.Name);
-                return new AbpMcpToolException("CANCELLED", "Operation cancelled.", oce);
-
-            default:
-                _logger.LogError(ex, "Tool {Tool} threw unhandled exception", descriptor.Name);
-                return new AbpMcpToolException("INTERNAL", "An internal error occurred.", ex);
-        }
     }
 }

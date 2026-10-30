@@ -5,6 +5,7 @@ using AbpMcp.Dispatch;
 using AbpMcp.Metadata;
 using AbpMcp.Notifications;
 using AbpMcp.Registration;
+using AbpMcp.Transport;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
@@ -78,13 +79,14 @@ public static class AbpMcpBuilderExtensions
             .Value;
 
         var convention = endpoints.MapMcp(options.Path);
+        McpOriginGuard.Apply(convention, options);
 
         if (!options.AllowAnonymous)
         {
             convention.RequireAuthorization();
         }
 
-        // Diagnostic endpoints follow the same auth posture as the MCP endpoint itself.
+        // Diagnostic endpoints follow the same auth and origin posture as the MCP endpoint itself.
         // _discover and _explain reveal the full tool surface, parameter schemas, and required
         // permissions, so leaving them anonymous in an otherwise-authed host would be a leak.
         AbpMcpDiagnosticsEndpoints.Map(endpoints, options.Path, requireAuthorization: !options.AllowAnonymous);

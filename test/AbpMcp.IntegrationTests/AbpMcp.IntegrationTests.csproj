@@ -9,6 +9,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\AbpMcp\AbpMcp.csproj" />
+    <!-- End-to-end tests host the Library sample on an in-memory TestServer and drive it with the SDK's MCP client. -->
+    <ProjectReference Include="..\..\samples\AbpMcp.Sample\AbpMcp.Sample.csproj" />
   </ItemGroup>
 
   <ItemGroup>
@@ -16,7 +18,6 @@
     <PackageReference Include="xunit" Version="2.9.2" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
     <PackageReference Include="FluentAssertions" Version="6.12.*" />
-    <PackageReference Include="NSubstitute" Version="5.3.*" />
 
     <PackageReference Include="Volo.Abp.TestBase" Version="$(AbpVersion)" />
     <PackageReference Include="Volo.Abp.Autofac" Version="$(AbpVersion)" />
@@ -24,6 +25,7 @@
     <PackageReference Include="Volo.Abp.EntityFrameworkCore" Version="$(AbpVersion)" />
 
     <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="$(EfCoreVersion)" />
+    <PackageReference Include="Microsoft.AspNetCore.TestHost" Version="$(MsExtVersion)" />
   </ItemGroup>
 
   <ItemGroup>

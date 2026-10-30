@@ -22,6 +22,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="AbpMcp.Tests" />
+    <InternalsVisibleTo Include="AbpMcp.IntegrationTests" />
   </ItemGroup>
 
 </Project>

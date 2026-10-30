@@ -3,6 +3,7 @@ using AbpMcp.Addins;
 using AbpMcp.IntegrationTests.Addins;
 using AbpMcp.IntegrationTests.Books;
 using AbpMcp.IntegrationTests.Ledger;
+using AbpMcp.IntegrationTests.Premium;
 using AbpMcp.Metadata;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
@@ -10,6 +11,7 @@ using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Volo.Abp;
+using Volo.Abp.Auditing;
 using Volo.Abp.Authorization;
 using Volo.Abp.Autofac;
 using Volo.Abp.BackgroundJobs;
@@ -42,6 +44,9 @@ public sealed class AbpMcpTestModule : AbpModule
         //   - background jobs off so write paths don't kick off async work
         //   - distributed entity events off so DB writes don't fan out to handlers
         services.AddAlwaysAllowAuthorization();
+
+        // Audit logs land in memory so cross-cutting-concern tests can assert on them.
+        services.Replace(ServiceDescriptor.Singleton<IAuditingStore, RecordingAuditingStore>());
 
         Configure<AbpBackgroundJobOptions>(options =>
         {
