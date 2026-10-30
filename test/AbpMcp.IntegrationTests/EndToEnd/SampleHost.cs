@@ -70,3 +70,14 @@ public sealed class SampleHost : IAsyncDisposable
         await _app.DisposeAsync();
     }
 }
+
+/// <summary>
+/// Every test class that boots the sample joins this collection so they never run in parallel: the sample
+/// seeds one process-wide named in-memory database, and two concurrent seeds collide on the same keys.
+/// </summary>
+[CollectionDefinition(Name)]
+public sealed class SampleHostCollection
+{
+    /// <summary>The collection name.</summary>
+    public const string Name = "Library sample host";
+}

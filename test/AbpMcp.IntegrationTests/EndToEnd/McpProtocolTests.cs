@@ -8,6 +8,7 @@ namespace AbpMcp.IntegrationTests.EndToEnd;
 /// tools/list and tools/call through the MCP SDK's client against the running Library sample.
 /// Regression tier for failures the descriptor-level tests cannot see (#49, #54).
 /// </summary>
+[Collection(SampleHostCollection.Name)]
 public sealed class McpProtocolTests : IAsyncLifetime
 {
     private SampleHost _host = null!;

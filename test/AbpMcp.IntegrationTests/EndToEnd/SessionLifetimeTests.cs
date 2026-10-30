@@ -9,6 +9,7 @@ namespace AbpMcp.IntegrationTests.EndToEnd;
 /// Sessions the SDK has ended must not be kept alive by abp-mcp's list_changed session registry,
 /// or every connect/disconnect grows the server's memory for the life of the process.
 /// </summary>
+[Collection(SampleHostCollection.Name)]
 public sealed class SessionLifetimeTests : IAsyncLifetime
 {
     private const int SessionCount = 20;
