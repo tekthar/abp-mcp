@@ -28,7 +28,7 @@ Every piece has exactly one job; none of them owns more than ~200 LOC.
 1. **Source of truth is ABP's api-definition, not OpenAPI and not raw reflection.** If a change would make us re-implement metadata extraction, stop and reconsider.
 2. **Tool exposure is opt-in.** A service without `[McpTool]` is invisible. Do not add "expose everything" modes without an explicit design change.
 3. **Permission check before invoke. Permission filter before list.** Both paths. Test both.
-4. **No catch-all exception handlers in the dispatcher.** Use the mapping table in `AbpMcpDispatcher.MapException`. Every ABP exception type has a specific translation. Unknown exceptions become `INTERNAL` with no stack trace leaked.
+4. **No catch-all exception handlers in the dispatcher.** Use the mapping table in `AbpMcpExceptionMapper`. Every ABP exception type has a specific translation. Unknown exceptions become `INTERNAL` with no stack trace leaked.
 5. **In-process only for v0.1 and v1.0.** No sidecar processes. No stdio transport. Streamable HTTP only.
 6. **ABP-idiomatic public surface.** Attribute names mirror `[RemoteService]` ergonomics (`[McpTool]`/`[McpIgnore]`). Options collection mirrors `ConventionalControllers.Create(assembly, ...)`. `Configure<AbpMcpOptions>` works in `PreConfigureServices`. If a new option breaks this convention, find another way.
 7. **`/mcp/_discover` and `/mcp/_explain` endpoints stay shipped.** They are the diff between "auto-generator that frustrates devs" and "auto-generator that delights them." Do not move them behind a feature flag, do not lazy-load them, do not skimp on the explain reasons.

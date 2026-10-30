@@ -68,4 +68,20 @@ public sealed class McpProtocolTests : IAsyncLifetime
         result.IsError.Should().NotBe(true, ((TextContentBlock)result.Content[0]).Text);
         result.StructuredContent!.Value.TryGetProperty("id", out _).Should().BeTrue();
     }
+
+    [Theory]
+    [InlineData("Member_Get", """{"id":"not-a-guid"}""", "Parameter 'id'")]
+    [InlineData("Loan_CheckOut", """{"input":"x"}""", "Parameter 'input'")]
+    [InlineData("Member_Register", """{"input":{"name":42}}""", "$.name")]
+    public async Task ToolsCall_MalformedArgument_ReturnsValidationError(string tool, string arguments, string expected)
+    {
+        await using var client = await _host.ConnectAsync();
+        var args = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(arguments)!;
+
+        var result = await client.CallToolAsync(new CallToolRequestParams { Name = tool, Arguments = args });
+
+        result.IsError.Should().BeTrue();
+        var text = ((TextContentBlock)result.Content[0]).Text;
+        text.Should().StartWith("[VALIDATION_ERROR]").And.Contain(expected);
+    }
 }

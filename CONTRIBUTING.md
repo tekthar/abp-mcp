@@ -61,7 +61,7 @@ These come from `CLAUDE.md`. They exist because every one of them was a real bug
 1. **Source of truth is ABP's api-definition, not OpenAPI and not raw reflection.** If a change makes us re-implement metadata extraction, stop and reconsider.
 2. **Tool exposure is opt-in.** A service without `[McpTool]` is invisible. No "expose everything" mode without an explicit design change.
 3. **Permission check before invoke. Permission filter before list.** Both paths. Test both.
-4. **No catch-all exception handlers in the dispatcher.** Use the mapping table in `AbpMcpDispatcher.MapException`. Unknown exceptions become `INTERNAL` — never leak a stack trace.
+4. **No catch-all exception handlers in the dispatcher.** Use the mapping table in `AbpMcpExceptionMapper`. Unknown exceptions become `INTERNAL` — never leak a stack trace.
 5. **In-process only for v0.1 and v1.0.** No sidecar processes. No stdio transport. Streamable HTTP only.
 6. **ABP-idiomatic public surface.** Attributes mirror `[RemoteService]` ergonomics. Options collection mirrors `ConventionalControllers.Create(...)`. `Configure<AbpMcpOptions>` works in `PreConfigureServices`. If a new option breaks this convention, find another way.
 7. **`/mcp/_discover` and `/mcp/_explain` endpoints stay shipped.** They are the diff between an auto-generator that frustrates devs and one that delights them. Do not move them behind a feature flag, do not lazy-load, do not skimp on the explain reasons.
