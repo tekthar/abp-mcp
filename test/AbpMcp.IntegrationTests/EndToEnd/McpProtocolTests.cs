@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using FluentAssertions;
 using ModelContextProtocol.Protocol;
 
@@ -84,5 +85,17 @@ public sealed class McpProtocolTests : IAsyncLifetime
         result.IsError.Should().BeTrue();
         var text = ((TextContentBlock)result.Content[0]).Text;
         text.Should().StartWith("[VALIDATION_ERROR]").And.Contain(expected);
+    }
+
+    [Fact]
+    public async Task Explain_IsScopedToExposedAssemblies()
+    {
+        using var http = _host.Server.CreateClient();
+
+        var body = JsonNode.Parse(await http.GetStringAsync("/mcp/_explain"))!;
+
+        body["exposed_assemblies"]!.AsArray().Select(a => a!.GetValue<string>()).Should().Equal("AbpMcp.Sample");
+        body["decisions"]!.AsArray().Select(d => d!["service"]!.GetValue<string>())
+            .Should().NotBeEmpty().And.OnlyContain(s => s.StartsWith("AbpMcp.Sample.", StringComparison.Ordinal));
     }
 }
