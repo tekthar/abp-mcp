@@ -9,6 +9,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\AbpMcp\AbpMcp.csproj" />
+    <!-- End-to-end tests host the Library sample on an in-memory TestServer and drive it with the SDK's MCP client. -->
+    <ProjectReference Include="..\..\samples\AbpMcp.Sample\AbpMcp.Sample.csproj" />
   </ItemGroup>
 
   <ItemGroup>
@@ -23,6 +25,7 @@
     <PackageReference Include="Volo.Abp.EntityFrameworkCore" Version="$(AbpVersion)" />
 
     <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="$(EfCoreVersion)" />
+    <PackageReference Include="Microsoft.AspNetCore.TestHost" Version="$(MsExtVersion)" />
   </ItemGroup>
 
   <ItemGroup>

@@ -42,12 +42,21 @@ public class JsonSchemaMapperTests
     }
 
     [Fact]
-    public void MapsNullableIntWithNullableFlag()
+    public void MapsNullableIntAsJsonSchemaTypeUnion()
     {
         var schema = JsonSchemaMapper.Map(typeof(int?));
 
-        schema["type"]!.GetValue<string>().Should().Be("integer");
-        schema["nullable"]!.GetValue<bool>().Should().BeTrue();
+        schema["type"]!.AsArray().Select(t => t!.GetValue<string>()).Should().Equal("integer", "null");
+        schema.ContainsKey("nullable").Should().BeFalse("'nullable' is OpenAPI, not JSON Schema");
+    }
+
+    [Fact]
+    public void MapsNullableEnumWithNullInTheEnumList()
+    {
+        var schema = JsonSchemaMapper.Map(typeof(DayOfWeek?));
+
+        schema["type"]!.AsArray().Select(t => t!.GetValue<string>()).Should().Equal("string", "null");
+        schema["enum"]!.AsArray().Should().Contain(v => v == null);
     }
 
     [Fact]
@@ -197,6 +206,16 @@ public class JsonSchemaMapperTests
     }
 
     [Fact]
+    public void EmitsConstraintsOnNullableValueProperties()
+    {
+        var schema = JsonSchemaMapper.Map(typeof(ComplexDto));
+
+        var ranged = schema["properties"]!["optionalRanged"]!.AsObject();
+        ranged["type"]!.AsArray().Select(t => t!.GetValue<string>()).Should().Equal("integer", "null");
+        ranged["minimum"]!.GetValue<double>().Should().Be(1);
+    }
+
+    [Fact]
     public void EmitsStringLengthConstraints()
     {
         var schema = JsonSchemaMapper.Map(typeof(ComplexDto));
@@ -266,6 +285,7 @@ public class JsonSchemaMapperTests
         public object? Anything { get; set; }
         [JsonPropertyName("custom_name")] public string Renamed { get; set; } = string.Empty;
         [Range(1, 90)] public int Ranged { get; set; }
+        [Range(1, 5)] public int? OptionalRanged { get; set; }
         [StringLength(120, MinimumLength = 2)] public string Bounded { get; set; } = string.Empty;
         [JsonIgnore] public string Hidden { get; set; } = string.Empty;
         [JsonExtensionData] public Dictionary<string, object>? Extra { get; set; }

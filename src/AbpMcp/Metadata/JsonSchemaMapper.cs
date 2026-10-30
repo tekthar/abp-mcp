@@ -67,9 +67,7 @@ public static class JsonSchemaMapper
         var underlying = Nullable.GetUnderlyingType(type);
         if (underlying is not null)
         {
-            var inner = MapType(underlying, visited, depth);
-            inner["nullable"] = true;
-            return inner;
+            return MakeNullable(MapType(underlying, visited, depth));
         }
 
         if (IsAnyValue(type))
@@ -166,6 +164,34 @@ public static class JsonSchemaMapper
         return false;
     }
 
+    /// <summary>
+    /// JSON Schema's spelling of "or null" for a <c>Nullable&lt;T&gt;</c>: <c>"type": [T, "null"]</c>, plus
+    /// <c>null</c> in an <c>enum</c> list so the value constraint admits it too. (OpenAPI's
+    /// <c>"nullable": true</c> is not a JSON Schema keyword, and MCP schemas are JSON Schema.)
+    /// </summary>
+    private static JsonObject MakeNullable(JsonObject schema)
+    {
+        if (schema["type"] is JsonValue type && type.TryGetValue<string>(out var name))
+        {
+            schema["type"] = new JsonArray(name, "null");
+        }
+
+        if (schema["enum"] is JsonArray values)
+        {
+            values.Add(null);
+        }
+
+        return schema;
+    }
+
+    /// <summary>The schema's JSON type, ignoring the <c>"null"</c> member of a <see cref="MakeNullable"/> union.</summary>
+    private static string? PrimaryType(JsonObject schema) => schema["type"] switch
+    {
+        JsonValue single => single.GetValue<string>(),
+        JsonArray union => union.Select(t => t?.GetValue<string>()).FirstOrDefault(t => t != "null"),
+        _ => null,
+    };
+
     private static JsonObject MapEnum(Type type)
     {
         var values = new JsonArray();
@@ -250,7 +276,7 @@ public static class JsonSchemaMapper
     /// </summary>
     private static void ApplyValidation(JsonObject schema, ICustomAttributeProvider member)
     {
-        var jsonType = schema["type"]?.GetValue<string>();
+        var jsonType = PrimaryType(schema);
 
         if (GetAttribute<RangeAttribute>(member) is { } range)
         {

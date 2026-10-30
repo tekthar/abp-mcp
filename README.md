@@ -189,6 +189,21 @@ Restart Claude Desktop. The agent can now search the catalog, register members,
 and check books out — every call hitting a real `IApplicationService` and
 persisting through EF Core.
 
+### Browser-based clients
+
+Desktop agents and CLIs send no `Origin` header and connect as-is. A request that
+does carry one (a browser page, such as the MCP Inspector's web UI) is refused with
+`403` unless its origin is listed, as the MCP transport spec requires. This stops an
+arbitrary web page from driving your local or intranet MCP server through the
+user's browser:
+
+```csharp
+Configure<AbpMcpOptions>(opts =>
+{
+    opts.AllowedOrigins.Add("http://localhost:6274"); // MCP Inspector
+});
+```
+
 ## Tenancy
 
 The MCP endpoint is mounted on the host's normal request pipeline, so ABP's

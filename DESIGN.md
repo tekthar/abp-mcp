@@ -115,10 +115,10 @@ public class ProductAppService : ApplicationService, IProductAppService
 
 | Endpoint | Purpose |
 |----------|---------|
-| `GET {path}/_discover` | Lists every exposed tool with name, description, service, method, parameters, required permissions, JSON schema. |
-| `GET {path}/_explain?service=Product` | For each method in matching services: `included: true/false` + reason text (which rule decided). Cures "why isn't my tool showing up?" |
+| `GET {path}/_discover` | Lists every exposed tool the caller is authorized for (the `tools/list` gate) with name, description, service, method, parameters, required permissions, JSON schema, and a `disabled` flag. |
+| `GET {path}/_explain?service=Product` | For each method in matching services within `ExposedAssemblies`: `included: true/false` + reason text (which rule decided). Cures "why isn't my tool showing up?" |
 
-Both inherit the host's auth — anonymous access is allowed only when `AllowAnonymous = true`.
+Both inherit the host's auth — anonymous access is allowed only when `AllowAnonymous = true` — and the same `Origin` rule as `/mcp`: a browser request from an origin not in `AbpMcpOptions.AllowedOrigins` gets `403`, as the MCP transport spec requires.
 
 ## Exposure rules (v0.1, layers 1, 4, 5 of the v1.0 model)
 

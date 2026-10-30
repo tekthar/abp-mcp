@@ -1,13 +1,13 @@
-using System.Reflection;
 using System.Text.Json;
-using AbpMcp.Attributes;
+using AbpMcp.Authorization;
 using AbpMcp.Metadata;
 using AbpMcp.Registration;
+using AbpMcp.Transport;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
-using Volo.Abp.Http.Modeling;
+using Microsoft.Extensions.Options;
 
 namespace AbpMcp.Diagnostics;
 
@@ -46,6 +46,11 @@ public static class AbpMcpDiagnosticsEndpoints
         var discover = endpoints.MapGet(basePath + "/_discover", HandleDiscover);
         var explain = endpoints.MapGet(basePath + "/_explain", HandleExplain);
 
+        // Same browser-origin rule as the MCP endpoint (AbpMcpOptions.AllowedOrigins).
+        var options = endpoints.ServiceProvider.GetRequiredService<IOptions<AbpMcpOptions>>().Value;
+        McpOriginGuard.Apply(discover, options);
+        McpOriginGuard.Apply(explain, options);
+
         if (requireAuthorization)
         {
             discover.RequireAuthorization();
@@ -53,28 +58,49 @@ public static class AbpMcpDiagnosticsEndpoints
         }
     }
 
-    private static async Task HandleDiscover(HttpContext context)
+    /// <summary>
+    /// Lists the tools the caller passes the authorizer for: the same gate <c>tools/list</c> applies, so the
+    /// endpoint never reveals a tool's schema or required permissions to a caller who cannot call it.
+    /// Administratively disabled tools stay listed (flagged) because explaining them is the point here.
+    /// </summary>
+    internal static async Task HandleDiscover(HttpContext context)
     {
         var registry = context.RequestServices.GetRequiredService<IDynamicMcpToolRegistry>();
+        var authorizer = context.RequestServices.GetRequiredService<IAbpMcpToolAuthorizer>();
+        var options = context.RequestServices.GetRequiredService<IOptions<AbpMcpOptions>>().Value;
         registry.Initialize();
+
+        var rows = new List<object>(registry.Tools.Count);
+        foreach (var tool in registry.Tools)
+        {
+            if ((await authorizer.AuthorizeAsync(tool, context).ConfigureAwait(false)).Succeeded)
+            {
+                rows.Add(ToDiscoveryRow(tool, options.DisabledTools.Contains(tool.Name)));
+            }
+        }
 
         var response = new
         {
-            tool_count = registry.Tools.Count,
-            tools = registry.Tools.Select(ToDiscoveryRow).ToArray(),
+            tool_count = rows.Count,
+            tools = rows,
         };
 
         await WriteJsonAsync(context, response).ConfigureAwait(false);
     }
 
-    private static async Task HandleExplain(HttpContext context)
+    internal static async Task HandleExplain(HttpContext context)
     {
         var serviceFilter = context.Request.Query["service"].ToString();
-        var explanations = BuildExplanations(context.RequestServices, serviceFilter);
+        var options = context.RequestServices.GetRequiredService<IOptions<AbpMcpOptions>>().Value;
+        var explanations = AbpMcpExposureExplainer.Explain(context.RequestServices, options, serviceFilter);
 
         var response = new
         {
             service_filter = string.IsNullOrEmpty(serviceFilter) ? null : serviceFilter,
+            // The scope the reader applies; services outside it are never candidates, so they are not listed.
+            exposed_assemblies = options.ExposedAssemblies.IsEmpty
+                ? null
+                : options.ExposedAssemblies.Select(e => e.Assembly.GetName().Name).ToArray(),
             count = explanations.Count,
             decisions = explanations,
         };
@@ -82,9 +108,10 @@ public static class AbpMcpDiagnosticsEndpoints
         await WriteJsonAsync(context, response).ConfigureAwait(false);
     }
 
-    private static object ToDiscoveryRow(ToolDescriptor tool) => new
+    private static object ToDiscoveryRow(ToolDescriptor tool, bool disabled) => new
     {
         name = tool.Name,
+        disabled,
         description = tool.Description,
         kind = tool.Handler is not null ? "dynamic" : "service",
         service = tool.ServiceType?.FullName,
@@ -96,135 +123,8 @@ public static class AbpMcpDiagnosticsEndpoints
         required_roles = tool.AuthorizeData.Select(a => a.Roles).Where(r => !string.IsNullOrEmpty(r)).ToArray(),
         authentication_schemes = tool.AuthorizeData.Select(a => a.AuthenticationSchemes).Where(s => !string.IsNullOrEmpty(s)).ToArray(),
         input_schema = tool.InputSchema,
-        output_schema = tool.OutputSchema,
+        output_schema = McpOutputShape.ToProtocolSchema(tool.OutputSchema),
     };
-
-    private static List<object> BuildExplanations(IServiceProvider services, string? serviceFilter)
-    {
-        var provider = services.GetRequiredService<IApiDescriptionModelProvider>();
-        var model = provider.CreateApiModel(new ApplicationApiDescriptionModelRequestDto
-        {
-            IncludeTypes = false,
-        });
-
-        var rows = new List<object>();
-
-        // Compiler-generated types (<PrivateImplementationDetails>, anonymous types, closure
-        // types) collide on FullName across assemblies. Group and take the first match —
-        // any of them is fine because we only resolve by FullName for ABP-declared services.
-        var loadedTypes = AppDomain.CurrentDomain.GetAssemblies()
-            .SelectMany(SafeGetTypes)
-            .Where(t => !string.IsNullOrEmpty(t.FullName))
-            .GroupBy(t => t.FullName!, StringComparer.Ordinal)
-            .ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal);
-
-        foreach (var module in model.Modules.Values)
-        {
-            foreach (var controller in module.Controllers.Values)
-            {
-                if (!loadedTypes.TryGetValue(controller.Type, out var serviceType))
-                {
-                    continue;
-                }
-
-                if (!string.IsNullOrEmpty(serviceFilter) &&
-                    !serviceType.FullName!.Contains(serviceFilter, StringComparison.OrdinalIgnoreCase) &&
-                    !serviceType.Name.Contains(serviceFilter, StringComparison.OrdinalIgnoreCase))
-                {
-                    continue;
-                }
-
-                var classExpose = serviceType.GetCustomAttribute<McpToolAttribute>(inherit: true);
-                var classIgnore = serviceType.GetCustomAttribute<McpIgnoreAttribute>(inherit: true);
-
-                foreach (var action in controller.Actions.Values)
-                {
-                    var method = ResolveMethod(serviceType, action);
-                    if (method is null)
-                    {
-                        rows.Add(new
-                        {
-                            service = serviceType.FullName,
-                            method = action.Name,
-                            included = false,
-                            reason = "Method not found on service type (likely interface mismatch).",
-                        });
-                        continue;
-                    }
-
-                    var (included, reason) = Decide(serviceType, method, classExpose, classIgnore);
-                    rows.Add(new
-                    {
-                        service = serviceType.FullName,
-                        method = method.Name,
-                        included,
-                        reason,
-                    });
-                }
-            }
-        }
-
-        return rows;
-    }
-
-    private static (bool Included, string Reason) Decide(
-        Type serviceType,
-        MethodInfo method,
-        McpToolAttribute? classExpose,
-        McpIgnoreAttribute? classIgnore)
-    {
-        if (classIgnore is not null)
-        {
-            return (false, $"Excluded: [McpIgnore] on {serviceType.Name}.");
-        }
-
-        var ignoringMember = McpIgnoreResolver.FindIgnoringMember(serviceType, method);
-        if (ignoringMember is not null)
-        {
-            var owner = ignoringMember.DeclaringType is { IsInterface: true } iface ? iface.Name : serviceType.Name;
-            return (false, $"Excluded: [McpIgnore] on {owner}.{method.Name}.");
-        }
-
-        var methodExpose = method.GetCustomAttribute<McpToolAttribute>(inherit: true);
-        if (methodExpose is not null)
-        {
-            return (true, $"Included: [McpTool] on method {method.Name}.");
-        }
-
-        if (classExpose is not null)
-        {
-            return (true, $"Included: [McpTool] on class {serviceType.Name}.");
-        }
-
-        return (false, "Excluded: opt-in default and no [McpTool] attribute on class or method.");
-    }
-
-    private static MethodInfo? ResolveMethod(Type serviceType, ActionApiDescriptionModel action)
-    {
-        var candidates = serviceType
-            .GetMethods(BindingFlags.Public | BindingFlags.Instance)
-            .Where(m => string.Equals(m.Name, action.Name, StringComparison.Ordinal))
-            .ToArray();
-
-        if (candidates.Length == 1)
-        {
-            return candidates[0];
-        }
-
-        return candidates.FirstOrDefault(m => m.GetParameters().Length == action.Parameters.Count);
-    }
-
-    private static IEnumerable<Type> SafeGetTypes(Assembly assembly)
-    {
-        try
-        {
-            return assembly.GetTypes();
-        }
-        catch (ReflectionTypeLoadException ex)
-        {
-            return ex.Types.Where(t => t is not null)!;
-        }
-    }
 
     private static async Task WriteJsonAsync(HttpContext context, object payload)
     {
