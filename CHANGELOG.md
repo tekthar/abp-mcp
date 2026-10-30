@@ -37,6 +37,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 ### Fixed
 
 - `tools/list` failed for every client when any tool returned a collection: MCP requires object output schemas. Non-object results are now advertised and returned wrapped as `{ "result": … }` ([#49](https://github.com/tekthar/abp-mcp/issues/49)).
+- A tool added to `AbpMcpOptions.DisabledTools` at runtime now drops out of `tools/list` and is flagged `disabled` in `/mcp/_discover` ([#13](https://github.com/tekthar/abp-mcp/issues/13), Stage A). Both read `IOptions<AbpMcpOptions>`, a cache separate from the `IOptionsMonitor` instance the dispatcher reads, so the tool was refused on call but still advertised. They now read `IOptionsMonitor<AbpMcpOptions>.CurrentValue`.
 - A malformed tool argument now returns `VALIDATION_ERROR` naming the parameter and JSON path, instead of the SDK's generic error ([#50](https://github.com/tekthar/abp-mcp/issues/50)).
 - `EntityNotFoundException` maps to `NOT_FOUND` instead of `INTERNAL`; coded authorization failures report their code instead of the CLR default message ([#51](https://github.com/tekthar/abp-mcp/issues/51)).
 - The sample listens on `localhost:5000`, matching the README ([#53](https://github.com/tekthar/abp-mcp/issues/53)).

@@ -67,7 +67,8 @@ public static class AbpMcpDiagnosticsEndpoints
     {
         var registry = context.RequestServices.GetRequiredService<IDynamicMcpToolRegistry>();
         var authorizer = context.RequestServices.GetRequiredService<IAbpMcpToolAuthorizer>();
-        var options = context.RequestServices.GetRequiredService<IOptions<AbpMcpOptions>>().Value;
+        // The monitor, not IOptions: DisabledTools changes at runtime (same source as tools/list).
+        var options = context.RequestServices.GetRequiredService<IOptionsMonitor<AbpMcpOptions>>().CurrentValue;
         registry.Initialize();
 
         var rows = new List<object>(registry.Tools.Count);
