@@ -96,7 +96,7 @@ public static class AbpMcpDiagnosticsEndpoints
         required_roles = tool.AuthorizeData.Select(a => a.Roles).Where(r => !string.IsNullOrEmpty(r)).ToArray(),
         authentication_schemes = tool.AuthorizeData.Select(a => a.AuthenticationSchemes).Where(s => !string.IsNullOrEmpty(s)).ToArray(),
         input_schema = tool.InputSchema,
-        output_schema = tool.OutputSchema,
+        output_schema = McpOutputShape.ToProtocolSchema(tool.OutputSchema),
     };
 
     private static List<object> BuildExplanations(IServiceProvider services, string? serviceFilter)

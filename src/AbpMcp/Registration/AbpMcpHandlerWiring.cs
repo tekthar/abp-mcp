@@ -110,7 +110,7 @@ internal sealed class AbpMcpHandlerWiring : IConfigureOptions<McpServerOptions>
             var result = await dispatcher.InvokeAsync(descriptor, arguments, cancellationToken)
                 .ConfigureAwait(false);
 
-            return SuccessResult(result);
+            return SuccessResult(descriptor, result);
         }
         catch (AbpMcpToolException tex)
         {
@@ -158,9 +158,10 @@ internal sealed class AbpMcpHandlerWiring : IConfigureOptions<McpServerOptions>
             InputSchema = JsonSerializer.SerializeToElement(descriptor.InputSchema),
         };
 
-        if (descriptor.OutputSchema is not null)
+        var outputSchema = McpOutputShape.ToProtocolSchema(descriptor.OutputSchema);
+        if (outputSchema is not null)
         {
-            tool.OutputSchema = JsonSerializer.SerializeToElement(descriptor.OutputSchema);
+            tool.OutputSchema = JsonSerializer.SerializeToElement(outputSchema);
         }
 
         return tool;
@@ -188,10 +189,10 @@ internal sealed class AbpMcpHandlerWiring : IConfigureOptions<McpServerOptions>
         return JsonSerializer.SerializeToElement(node);
     }
 
-    private static CallToolResult SuccessResult(JsonElement payload) => new()
+    private static CallToolResult SuccessResult(ToolDescriptor descriptor, JsonElement payload) => new()
     {
         IsError = false,
-        StructuredContent = payload,
+        StructuredContent = McpOutputShape.ToStructuredContent(descriptor.OutputSchema, payload),
         Content = new[]
         {
             new TextContentBlock { Text = payload.GetRawText() } as ContentBlock,
