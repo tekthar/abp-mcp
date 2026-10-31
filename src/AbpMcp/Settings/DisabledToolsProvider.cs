@@ -1,5 +1,4 @@
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Volo.Abp.Settings;
 
@@ -13,9 +12,11 @@ namespace AbpMcp.Settings;
 /// The options set is read on every call, so in-process changes apply immediately. The setting is
 /// cached per instance for <see cref="AbpMcpOptions.DisabledToolsSettingCacheDuration"/>, so
 /// <c>tools/call</c> does not pay a settings-store read each time; a change made on another instance
-/// therefore applies here within that window, on top of ABP's own setting-cache invalidation. If the
-/// setting cannot be read, the last value read is kept and a warning is logged, so a settings-store
-/// outage does not take <c>tools/list</c> down with it.
+/// therefore applies here within that window, on top of ABP's own setting-cache invalidation.
+/// <para>
+/// A failed setting read is not caught: the request fails rather than serving tools the kill switch
+/// may have disabled. The failure is not cached, so the next request reads the setting again.
+/// </para>
 /// </remarks>
 internal sealed class DisabledToolsProvider : IDisabledToolsProvider
 {
@@ -24,20 +25,17 @@ internal sealed class DisabledToolsProvider : IDisabledToolsProvider
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IOptionsMonitor<AbpMcpOptions> _options;
     private readonly TimeProvider _time;
-    private readonly ILogger<DisabledToolsProvider> _logger;
 
     private volatile SettingSnapshot? _snapshot;
 
     public DisabledToolsProvider(
         IServiceScopeFactory scopeFactory,
         IOptionsMonitor<AbpMcpOptions> options,
-        TimeProvider time,
-        ILogger<DisabledToolsProvider> logger)
+        TimeProvider time)
     {
         _scopeFactory = scopeFactory;
         _options = options;
         _time = time;
-        _logger = logger;
     }
 
     public async Task<IReadOnlySet<string>> GetDisabledToolsAsync(CancellationToken cancellationToken = default)
@@ -72,23 +70,13 @@ internal sealed class DisabledToolsProvider : IDisabledToolsProvider
             return snapshot.Tools;
         }
 
-        try
-        {
-            using var scope = _scopeFactory.CreateScope();
-            var settings = scope.ServiceProvider.GetRequiredService<ISettingProvider>();
-            var value = await settings.GetOrNullAsync(AbpMcpSettingNames.DisabledTools).ConfigureAwait(false);
+        using var scope = _scopeFactory.CreateScope();
+        var settings = scope.ServiceProvider.GetRequiredService<ISettingProvider>();
+        var value = await settings.GetOrNullAsync(AbpMcpSettingNames.DisabledTools).ConfigureAwait(false);
 
-            var tools = Parse(value);
-            _snapshot = new SettingSnapshot(tools, now + cacheDuration);
-            return tools;
-        }
-        catch (Exception ex)
-        {
-            // Not the dispatcher: this keeps a store outage from failing every tools/list. Retry on the
-            // next call rather than caching the failure.
-            _logger.LogWarning(ex, "Could not read the {Setting} setting; using the last known value.", AbpMcpSettingNames.DisabledTools);
-            return snapshot?.Tools ?? new HashSet<string>(StringComparer.Ordinal);
-        }
+        var tools = Parse(value);
+        _snapshot = new SettingSnapshot(tools, now + cacheDuration);
+        return tools;
     }
 
     private sealed record SettingSnapshot(IReadOnlySet<string> Tools, DateTimeOffset ExpiresAt);

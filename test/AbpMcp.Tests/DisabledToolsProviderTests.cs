@@ -1,7 +1,6 @@
 using AbpMcp.Settings;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
@@ -80,26 +79,30 @@ public class DisabledToolsProviderTests
     }
 
     [Fact]
-    public async Task SettingReadFailure_KeepsLastKnownValue_AndDoesNotThrow()
+    public async Task SettingReadFailure_Propagates_SoTheRequestFailsClosed()
     {
         var fixture = new Fixture(setting: "A");
         fixture.Options.DisabledToolsSettingCacheDuration = TimeSpan.Zero;
         await fixture.Provider.GetDisabledToolsAsync();
 
         fixture.Settings.GetOrNullAsync(AbpMcpSettingNames.DisabledTools).ThrowsAsync(new InvalidOperationException("store down"));
-        fixture.Options.DisabledTools.Add("Member_List");
 
-        (await fixture.Provider.GetDisabledToolsAsync()).Should().BeEquivalentTo("A", "Member_List");
+        // Not served from the last known value: that could expose a tool disabled since it was read.
+        var act = () => fixture.Provider.GetDisabledToolsAsync();
+        await act.Should().ThrowAsync<InvalidOperationException>();
     }
 
     [Fact]
-    public async Task SettingReadFailure_BeforeAnySuccessfulRead_FallsBackToOptions()
+    public async Task SettingReadFailure_IsNotCached_NextRequestRereads()
     {
         var fixture = new Fixture(setting: null);
         fixture.Settings.GetOrNullAsync(AbpMcpSettingNames.DisabledTools).ThrowsAsync(new InvalidOperationException("store down"));
-        fixture.Options.DisabledTools.Add("Member_List");
+        var act = () => fixture.Provider.GetDisabledToolsAsync();
+        await act.Should().ThrowAsync<InvalidOperationException>();
 
-        (await fixture.Provider.GetDisabledToolsAsync()).Should().BeEquivalentTo("Member_List");
+        fixture.Settings.GetOrNullAsync(AbpMcpSettingNames.DisabledTools).Returns("A");
+
+        (await fixture.Provider.GetDisabledToolsAsync()).Should().BeEquivalentTo("A");
     }
 
     private sealed class Fixture
@@ -116,8 +119,7 @@ public class DisabledToolsProviderTests
             Provider = new DisabledToolsProvider(
                 services.GetRequiredService<IServiceScopeFactory>(),
                 monitor,
-                Time,
-                NullLogger<DisabledToolsProvider>.Instance);
+                Time);
         }
 
         public string? Setting { get; set; }

@@ -5,6 +5,7 @@ using FluentAssertions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
 using Volo.Abp.Settings;
 
@@ -72,12 +73,36 @@ public sealed class DisabledToolsSettingTests : IAsyncLifetime
         (await client.ListToolsAsync()).Select(t => t.Name).Should().Contain(Tool);
     }
 
+    [Fact]
+    public async Task SettingStoreOutage_FailsClosed_WithoutLeakingTheException()
+    {
+        await using var client = await _host.ConnectAsync();
+        _store.Failure = new InvalidOperationException("secret-connection-string");
+
+        var list = async () => await client.ListToolsAsync();
+        var listError = (await list.Should().ThrowAsync<McpException>()).Which;
+        listError.Message.Should().NotContain("secret-connection-string");
+
+        // The SDK reports a failed tools/call as an error result rather than a protocol error.
+        var call = await client.CallToolAsync(Tool);
+        call.IsError.Should().BeTrue();
+        call.StructuredContent.Should().BeNull();
+        var callText = string.Concat(call.Content.OfType<TextContentBlock>().Select(c => c.Text));
+        callText.Should().NotContain("secret-connection-string");
+
+        _store.Failure = null;
+        (await client.ListToolsAsync()).Select(t => t.Name).Should().Contain(Tool);
+    }
+
     /// <summary>
     /// Stand-in for ABP Setting Management's store: values keyed by setting name, provider name and key.
     /// </summary>
     private sealed class InMemoryGlobalSettingStore : ISettingStore
     {
         private readonly ConcurrentDictionary<(string Name, string? Provider, string? Key), string> _values = new();
+
+        /// <summary>When set, every read throws it, simulating a settings-store outage.</summary>
+        public Exception? Failure { get; set; }
 
         public void SetGlobal(string name, string? value) =>
             Set(name, GlobalSettingValueProvider.ProviderName, providerKey: null, value);
@@ -95,10 +120,10 @@ public sealed class DisabledToolsSettingTests : IAsyncLifetime
         }
 
         public Task<string?> GetOrNullAsync(string name, string? providerName, string? providerKey) =>
-            Task.FromResult(_values.TryGetValue((name, providerName, providerKey), out var value) ? value : null);
+            Failure is not null ? Task.FromException<string?>(Failure) : Task.FromResult(_values.TryGetValue((name, providerName, providerKey), out var value) ? value : null);
 
         public Task<List<SettingValue>> GetAllAsync(string[] names, string? providerName, string? providerKey) =>
-            Task.FromResult(names
+            Failure is not null ? Task.FromException<List<SettingValue>>(Failure) : Task.FromResult(names
                 .Select(n => new SettingValue(n, _values.TryGetValue((n, providerName, providerKey), out var v) ? v : null))
                 .ToList());
     }
