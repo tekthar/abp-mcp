@@ -1,6 +1,6 @@
 <Project>
   <PropertyGroup>
-    <!-- .NET 10 / ABP 10 only. net9.0 (ABP 9.2) support was dropped in 0.4.0-alpha. -->
+    <!-- .NET 10 / ABP 10 only. net9.0 (ABP 9.2) support was dropped in 0.4.0. -->
     <TargetFramework>net10.0</TargetFramework>
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
@@ -32,6 +32,6 @@
          our audience are "abp" and "mcp"; the rest are second-order matches. -->
     <PackageTags>abp;abp-framework;mcp;model-context-protocol;claude;ai;agents;dotnet;aspnetcore</PackageTags>
     <PackageReleaseNotes>See https://github.com/tekthar/abp-mcp/releases for release notes.</PackageReleaseNotes>
-    <Version>0.3.0-alpha</Version>
+    <Version>0.4.0</Version>
   </PropertyGroup>
 </Project>

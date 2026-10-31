@@ -31,7 +31,7 @@ sequenceDiagram
 
 > A 30-second screen recording of this flow against the bundled Library sample is tracked as [#18](https://github.com/tekthar/abp-mcp/issues/18). PRs welcome.
 
-**Status:** alpha. Available on NuGet as a prerelease — `dotnet add package AbpMcp --prerelease`.
+**Status:** pre-1.0 (0.x): usable, but the API can still change between minor versions. Available on NuGet — `dotnet add package AbpMcp`.
 
 **Requires:** .NET 10 and ABP Framework 10.1 or later. (`0.3.0-alpha` is the last release that supports .NET 9 / ABP 9.2.)
 
@@ -41,10 +41,10 @@ Every ABP app already declares its business logic as `IApplicationService` with 
 
 ## Quickstart
 
-Install the NuGet (pre-release):
+Install the NuGet:
 
 ```bash
-dotnet add package AbpMcp --prerelease
+dotnet add package AbpMcp
 ```
 
 Add `AbpMcpModule` to your host module's `[DependsOn(...)]` and mount the endpoint:
@@ -299,7 +299,7 @@ abp-mcp/
 
 ## Contributing
 
-Pre-alpha. Direct PRs welcome — please skim [CONTRIBUTING.md](https://github.com/tekthar/abp-mcp/blob/main/CONTRIBUTING.md) before opening anything non-trivial. The non-negotiable design rules and the regression-test requirement are in there.
+Pre-1.0. Direct PRs welcome — please skim [CONTRIBUTING.md](https://github.com/tekthar/abp-mcp/blob/main/CONTRIBUTING.md) before opening anything non-trivial. The non-negotiable design rules and the regression-test requirement are in there.
 
 Open invitations:
 - JSON Schema mapping for complex DTOs (recursion handling, polymorphism)

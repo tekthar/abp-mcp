@@ -58,7 +58,7 @@ body:
     id: abp-mcp-version
     attributes:
       label: abp-mcp version
-      placeholder: "0.1.0-alpha"
+      placeholder: "0.4.0"
     validations:
       required: true
 

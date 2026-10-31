@@ -6,6 +6,20 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+Nothing yet. The next changes after `v0.4.0` ship here.
+
+## [0.4.0] — 2026-10-31
+
+The first release without a pre-release tag: `dotnet add package AbpMcp` now installs it by default. Still 0.x, so the API can change between minor versions. Breaking for .NET 9 hosts (see **Removed**).
+
+### Added
+
+- `AbpMcpErrorCodes` (`AbpMcp.Dispatch`) — public constants for every error code abp-mcp returns (`VALIDATION_ERROR`, `FORBIDDEN`, `NOT_FOUND`, `UNKNOWN_TOOL`, `DISABLED`, `BUSINESS_ERROR`, `CANCELLED`, `INTERNAL`), so clients can branch on them without copying strings. Wire values are unchanged ([#16](https://github.com/tekthar/abp-mcp/issues/16); thanks [@mvanhorn](https://github.com/mvanhorn), [#25](https://github.com/tekthar/abp-mcp/pull/25)).
+- **Zero-config assembly registration** ([#55](https://github.com/tekthar/abp-mcp/issues/55)). abp-mcp now scans the ABP module graph and exposes every module assembly that references it and declares `[McpTool]` services, so `[DependsOn(typeof(AbpMcpModule))]` is enough. On by default; turn it off with `AbpMcpOptions.AutoDiscoverAssemblies = false`. `/mcp/_explain` gains `auto_discovered_assemblies`, and `ExposedAssemblyEntry` gains `IsAutoDiscovered`.
+- **Cross-instance kill switch** ([#13](https://github.com/tekthar/abp-mcp/issues/13), Stage B). A new global ABP setting, `AbpMcp.DisabledTools` (`AbpMcpSettingNames.DisabledTools`), takes a comma-separated list of tool names to disable. With ABP Setting Management and a shared distributed cache (e.g. Redis), a global value applies to every instance; without it, the value can come from configuration (`Settings:AbpMcp.DisabledTools`). It is combined with `AbpMcpOptions.DisabledTools`, and tenant and user values are ignored. abp-mcp reads it through `ISettingProvider`, so it takes no dependency on the Setting Management module.
+- `AbpMcpOptions.DisabledToolsSettingCacheDuration` (default 10 seconds) — how long each instance caches the setting, so `tools/call` does not read the settings store every time.
+- `IDisabledToolsProvider` (`AbpMcp.Settings`) — the single source of disabled tools for `tools/list`, `tools/call`, the dispatcher and `/mcp/_discover`; replaceable via DI.
+
 ### Removed
 
 - **`net9.0` support.** The package now targets `net10.0` only, with ABP `10.1.*` as the minimum. `0.3.0-alpha` is the last release for .NET 9 / ABP 9.2; hosts still on .NET 9 should stay on it. CI and the release workflow install only the .NET 10 SDK.
@@ -13,6 +27,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 ### Changed
 
 - **MCP SDK `ModelContextProtocol.AspNetCore` 1.2.0 → 2.3.0, with the transport pinned to stateful sessions.** SDK 2.x defaults to stateless mode (MCP protocol revision `2026-07-28`, SEP-2567), which has no session to push `notifications/tools/list_changed` over; the `DisabledTools` kill switch and `IAbpMcpToolListChangedNotifier` would have stopped reaching connected agents. `AddAbpMcp` now sets `HttpServerTransportOptions.SessionMode = Stateful`, so behavior is unchanged from 0.3.0-alpha. A host that wants stateless mode (and gives up `list_changed`) can override it with `services.Configure<HttpServerTransportOptions>(o => o.SessionMode = HttpServerSessionMode.Stateless)`.
+
+### Fixed
+
+- `Configure<AbpMcpOptions>(o => o.ExposedAssemblies.Create(asm))` on its own now exposes the assembly's tools. Before, the assembly also had to be registered with ABP's `ConventionalControllers`, and without that it silently yielded none ([#9](https://github.com/tekthar/abp-mcp/issues/9)). Every exposed assembly is now registered there automatically, unless the host already registered it, in which case its settings are kept.
 
 ## [0.3.0-alpha] — 2026-10-30
 
@@ -31,16 +49,11 @@ Hardens the MCP path to match ABP's REST path (authorization, validation, unit o
 
 ### Added
 
-- `AbpMcpErrorCodes` (`AbpMcp.Dispatch`) — public constants for every error code abp-mcp returns (`VALIDATION_ERROR`, `FORBIDDEN`, `NOT_FOUND`, `UNKNOWN_TOOL`, `DISABLED`, `BUSINESS_ERROR`, `CANCELLED`, `INTERNAL`), so clients can branch on them without copying strings. Wire values are unchanged ([#16](https://github.com/tekthar/abp-mcp/issues/16); thanks [@mvanhorn](https://github.com/mvanhorn), [#25](https://github.com/tekthar/abp-mcp/pull/25)).
-- **Zero-config assembly registration** ([#55](https://github.com/tekthar/abp-mcp/issues/55)). abp-mcp now scans the ABP module graph and exposes every module assembly that references it and declares `[McpTool]` services, so `[DependsOn(typeof(AbpMcpModule))]` is enough. On by default; turn it off with `AbpMcpOptions.AutoDiscoverAssemblies = false`. `/mcp/_explain` gains `auto_discovered_assemblies`, and `ExposedAssemblyEntry` gains `IsAutoDiscovered`.
 - `IAbpMcpToolAuthorizer` (`AbpMcp.Authorization`) — the single authorization gate shared by `tools/list` and `tools/call`; replaceable via DI.
 - `ToolDescriptor.AuthorizeData` — the complete harvested `[Authorize]` data for a tool. `/mcp/_discover` rows gain `requires_authenticated_user`, `required_roles` and `authentication_schemes`.
 - `AbpMcpOptions.AllowedOrigins` — browser origins allowed to call the MCP and diagnostics endpoints (`"*"` for any).
 - `/mcp/_discover` rows gain `disabled`; `/mcp/_explain` responses gain `exposed_assemblies`.
 - End-to-end tests that drive the bundled sample with the MCP SDK's own client ([#54](https://github.com/tekthar/abp-mcp/issues/54)).
-- **Cross-instance kill switch** ([#13](https://github.com/tekthar/abp-mcp/issues/13), Stage B). A new global ABP setting, `AbpMcp.DisabledTools` (`AbpMcpSettingNames.DisabledTools`), takes a comma-separated list of tool names to disable. With ABP Setting Management and a shared distributed cache (e.g. Redis), a global value applies to every instance; without it, the value can come from configuration (`Settings:AbpMcp.DisabledTools`). It is combined with `AbpMcpOptions.DisabledTools`, and tenant and user values are ignored. abp-mcp reads it through `ISettingProvider`, so it takes no dependency on the Setting Management module.
-- `AbpMcpOptions.DisabledToolsSettingCacheDuration` (default 10 seconds) — how long each instance caches the setting, so `tools/call` does not read the settings store every time.
-- `IDisabledToolsProvider` (`AbpMcp.Settings`) — the single source of disabled tools for `tools/list`, `tools/call`, the dispatcher and `/mcp/_discover`; replaceable via DI.
 
 ### Changed
 
@@ -53,7 +66,6 @@ Hardens the MCP path to match ABP's REST path (authorization, validation, unit o
 
 ### Fixed
 
-- `Configure<AbpMcpOptions>(o => o.ExposedAssemblies.Create(asm))` on its own now exposes the assembly's tools. Before, the assembly also had to be registered with ABP's `ConventionalControllers`, and without that it silently yielded none ([#9](https://github.com/tekthar/abp-mcp/issues/9)). Every exposed assembly is now registered there automatically, unless the host already registered it, in which case its settings are kept.
 - `tools/list` failed for every client when any tool returned a collection: MCP requires object output schemas. Non-object results are now advertised and returned wrapped as `{ "result": … }` ([#49](https://github.com/tekthar/abp-mcp/issues/49)).
 - A tool added to `AbpMcpOptions.DisabledTools` at runtime now drops out of `tools/list` and is flagged `disabled` in `/mcp/_discover` ([#13](https://github.com/tekthar/abp-mcp/issues/13), Stage A). Both read `IOptions<AbpMcpOptions>`, a cache separate from the `IOptionsMonitor` instance the dispatcher reads, so the tool was refused on call but still advertised. They now read `IOptionsMonitor<AbpMcpOptions>.CurrentValue`.
 - A malformed tool argument now returns `VALIDATION_ERROR` naming the parameter and JSON path, instead of the SDK's generic error ([#50](https://github.com/tekthar/abp-mcp/issues/50)).
@@ -125,7 +137,8 @@ First public pre-release. Functional but pre-alpha — API surface will move bas
 - No Roslyn analyzer yet to flag `[McpTool]` on non-`IApplicationService` types at compile time. Targeted for v0.3.
 - `services.AddAbpMcpAssembly(asm)` already removes the two-step registration friction for the common case. Letting `AbpMcpOptions.ExposedAssemblies.Create(asm)` *itself* auto-register with `ConventionalControllers` (so the lambda-style `Configure<AbpMcpOptions>(...)` form needs no companion call either) is queued for v0.2.
 
-[Unreleased]: https://github.com/tekthar/abp-mcp/compare/v0.3.0-alpha...HEAD
+[Unreleased]: https://github.com/tekthar/abp-mcp/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/tekthar/abp-mcp/compare/v0.3.0-alpha...v0.4.0
 [0.3.0-alpha]: https://github.com/tekthar/abp-mcp/compare/v0.2.1-alpha...v0.3.0-alpha
 [0.2.1-alpha]: https://github.com/tekthar/abp-mcp/compare/v0.1.0-alpha...v0.2.1-alpha
 [0.1.0-alpha]: https://github.com/tekthar/abp-mcp/releases/tag/v0.1.0-alpha
