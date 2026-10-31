@@ -27,6 +27,7 @@ Hardens the MCP path to match ABP's REST path (authorization, validation, unit o
 
 ### Added
 
+- `AbpMcpErrorCodes` (`AbpMcp.Dispatch`) — public constants for every error code abp-mcp returns (`VALIDATION_ERROR`, `FORBIDDEN`, `NOT_FOUND`, `UNKNOWN_TOOL`, `DISABLED`, `BUSINESS_ERROR`, `CANCELLED`, `INTERNAL`), so clients can branch on them without copying strings. Wire values are unchanged ([#16](https://github.com/tekthar/abp-mcp/issues/16); thanks [@mvanhorn](https://github.com/mvanhorn), [#25](https://github.com/tekthar/abp-mcp/pull/25)).
 - **Zero-config assembly registration** ([#55](https://github.com/tekthar/abp-mcp/issues/55)). abp-mcp now scans the ABP module graph and exposes every module assembly that references it and declares `[McpTool]` services, so `[DependsOn(typeof(AbpMcpModule))]` is enough. On by default; turn it off with `AbpMcpOptions.AutoDiscoverAssemblies = false`. `/mcp/_explain` gains `auto_discovered_assemblies`, and `ExposedAssemblyEntry` gains `IsAutoDiscovered`.
 - `IAbpMcpToolAuthorizer` (`AbpMcp.Authorization`) — the single authorization gate shared by `tools/list` and `tools/call`; replaceable via DI.
 - `ToolDescriptor.AuthorizeData` — the complete harvested `[Authorize]` data for a tool. `/mcp/_discover` rows gain `requires_authenticated_user`, `required_roles` and `authentication_schemes`.
