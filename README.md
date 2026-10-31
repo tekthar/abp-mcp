@@ -45,7 +45,7 @@ Install the NuGet (pre-release):
 dotnet add package AbpMcp --prerelease
 ```
 
-Add `AbpMcpModule` to your application module's `[DependsOn(...)]`, then register the assembly that holds your application services:
+Add `AbpMcpModule` to your host module's `[DependsOn(...)]` and mount the endpoint:
 
 ```csharp
 [DependsOn(
@@ -56,11 +56,6 @@ public class MyAppHttpApiHostModule : AbpModule
 {
     public override void ConfigureServices(ServiceConfigurationContext context)
     {
-        // One call wires both ABP's ConventionalControllers (so the api-definition
-        // provider sees the assembly's app services) and abp-mcp's ExposedAssemblies
-        // filter (so the MCP scan scopes to it).
-        context.Services.AddAbpMcpAssembly(typeof(MyAppApplicationModule).Assembly);
-
         Configure<AbpMcpOptions>(opts =>
         {
             opts.Path = "/mcp";
@@ -79,7 +74,9 @@ public class MyAppHttpApiHostModule : AbpModule
 }
 ```
 
-Tag the services you want agent-accessible:
+Tag the services you want agent-accessible. No assembly registration is needed:
+abp-mcp scans the ABP module graph for assemblies that declare `[McpTool]` services
+and registers them with ABP's `ConventionalControllers` itself.
 
 ```csharp
 [McpTool]
@@ -89,6 +86,21 @@ public class ProductAppService : ApplicationService, IProductAppService
     public Task<ProductDto> CreateAsync(CreateProductDto input) => /* ... */;
 }
 ```
+To pick assemblies yourself, register them and turn discovery off. Either form
+also registers the assembly with `ConventionalControllers`, unless you already did:
+
+```csharp
+Configure<AbpMcpOptions>(opts =>
+{
+    opts.AutoDiscoverAssemblies = false;
+    opts.ExposedAssemblies.Create(typeof(MyAppApplicationModule).Assembly);
+});
+```
+
+Only assemblies that reference the `AbpMcp` package directly are scanned. If a
+service inherits `[McpTool]` from a base class in another assembly, register its
+assembly explicitly.
+
 ### Customising tool descriptions and names
 
 By default, each exposed method receives a mechanical description based on its

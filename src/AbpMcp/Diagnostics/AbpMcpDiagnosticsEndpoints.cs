@@ -104,6 +104,11 @@ public static class AbpMcpDiagnosticsEndpoints
             exposed_assemblies = options.ExposedAssemblies.IsEmpty
                 ? null
                 : options.ExposedAssemblies.Select(e => e.Assembly.GetName().Name).ToArray(),
+            // The subset abp-mcp found in the module graph rather than the host registering it.
+            auto_discovered_assemblies = options.ExposedAssemblies
+                .Where(e => e.IsAutoDiscovered)
+                .Select(e => e.Assembly.GetName().Name)
+                .ToArray(),
             count = explanations.Count,
             decisions = explanations,
         };
