@@ -50,6 +50,7 @@ public sealed class AssemblyRegistrationTests
         {
             opts.AutoDiscoverAssemblies = false;
             opts.ExposedAssemblies.Create(SampleAssembly);
+            opts.ExposedAssemblies.Create(SampleAssembly); // a repeat must not register it twice with MVC
         });
         await using var client = await host.ConnectAsync();
 

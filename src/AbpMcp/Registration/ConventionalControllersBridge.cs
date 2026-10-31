@@ -26,12 +26,16 @@ internal sealed class ConventionalControllersBridge : IPostConfigureOptions<AbpA
             .Select(s => s.Assembly)
             .ToHashSet();
 
-        foreach (var entry in _mcpOptions.Value.ExposedAssemblies)
+        // Distinct: the host may have registered the same assembly with ExposedAssemblies more than once.
+        var unregistered = _mcpOptions.Value.ExposedAssemblies
+            .Select(e => e.Assembly)
+            .Where(assembly => !registered.Contains(assembly))
+            .Distinct()
+            .ToList();
+
+        foreach (var assembly in unregistered)
         {
-            if (registered.Add(entry.Assembly))
-            {
-                options.ConventionalControllers.Create(entry.Assembly);
-            }
+            options.ConventionalControllers.Create(assembly);
         }
     }
 }

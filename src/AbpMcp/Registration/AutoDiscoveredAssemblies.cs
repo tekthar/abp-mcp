@@ -22,12 +22,12 @@ internal sealed class AutoDiscoveredAssemblies : IPostConfigureOptions<AbpMcpOpt
         }
 
         var candidates = _modules.Modules.SelectMany(m => m.AllAssemblies);
-        foreach (var assembly in McpToolAssemblyScanner.FindToolAssemblies(candidates))
+        var notYetExposed = McpToolAssemblyScanner.FindToolAssemblies(candidates)
+            .Where(assembly => !options.ExposedAssemblies.Contains(assembly));
+
+        foreach (var assembly in notYetExposed)
         {
-            if (!options.ExposedAssemblies.Contains(assembly))
-            {
-                options.ExposedAssemblies.Create(assembly).IsAutoDiscovered = true;
-            }
+            options.ExposedAssemblies.Create(assembly).IsAutoDiscovered = true;
         }
     }
 }
