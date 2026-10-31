@@ -13,7 +13,7 @@ namespace AbpMcp.Sample;
 /// Sample ABP module hosting the Library domain. Wires:
 ///   - Autofac as the DI container (ABP standard)
 ///   - the standard ABP MVC stack (so the api-definition provider is available to abp-mcp)
-///   - abp-mcp itself, scoped to this assembly via <c>ExposedAssemblies</c>
+///   - abp-mcp itself, which auto-discovers this assembly's <c>[McpTool]</c> services
 ///   - a deterministic in-memory <see cref="LibraryDbContext"/> seeded with classic titles
 /// </summary>
 [DependsOn(
@@ -30,10 +30,8 @@ public sealed class LibrarySampleModule : AbpModule
 
         services.AddDbContext<LibraryDbContext>(opts => opts.UseInMemoryDatabase(DemoDatabaseName));
 
-        // One call does both wirings: registers this assembly with ABP's
-        // ConventionalControllers (so the api-definition provider can see its app services)
-        // AND with abp-mcp's ExposedAssemblies filter (so the MCP scan scopes to it).
-        services.AddAbpMcpAssembly(typeof(LibrarySampleModule).Assembly);
+        // No assembly registration needed: abp-mcp finds this module's [McpTool] services in the
+        // ABP module graph and registers the assembly with ConventionalControllers itself.
 
         // A dynamic add-in that contributes a tool not backed by any single application service.
         // This is the extension seam: register any number of IAbpMcpAddin to grow the MCP surface.

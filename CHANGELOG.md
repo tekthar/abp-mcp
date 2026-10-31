@@ -27,6 +27,7 @@ Hardens the MCP path to match ABP's REST path (authorization, validation, unit o
 
 ### Added
 
+- **Zero-config assembly registration** ([#55](https://github.com/tekthar/abp-mcp/issues/55)). abp-mcp now scans the ABP module graph and exposes every module assembly that references it and declares `[McpTool]` services, so `[DependsOn(typeof(AbpMcpModule))]` is enough. On by default; turn it off with `AbpMcpOptions.AutoDiscoverAssemblies = false`. `/mcp/_explain` gains `auto_discovered_assemblies`, and `ExposedAssemblyEntry` gains `IsAutoDiscovered`.
 - `IAbpMcpToolAuthorizer` (`AbpMcp.Authorization`) — the single authorization gate shared by `tools/list` and `tools/call`; replaceable via DI.
 - `ToolDescriptor.AuthorizeData` — the complete harvested `[Authorize]` data for a tool. `/mcp/_discover` rows gain `requires_authenticated_user`, `required_roles` and `authentication_schemes`.
 - `AbpMcpOptions.AllowedOrigins` — browser origins allowed to call the MCP and diagnostics endpoints (`"*"` for any).
@@ -47,6 +48,7 @@ Hardens the MCP path to match ABP's REST path (authorization, validation, unit o
 
 ### Fixed
 
+- `Configure<AbpMcpOptions>(o => o.ExposedAssemblies.Create(asm))` on its own now exposes the assembly's tools. Before, the assembly also had to be registered with ABP's `ConventionalControllers`, and without that it silently yielded none ([#9](https://github.com/tekthar/abp-mcp/issues/9)). Every exposed assembly is now registered there automatically, unless the host already registered it, in which case its settings are kept.
 - `tools/list` failed for every client when any tool returned a collection: MCP requires object output schemas. Non-object results are now advertised and returned wrapped as `{ "result": … }` ([#49](https://github.com/tekthar/abp-mcp/issues/49)).
 - A tool added to `AbpMcpOptions.DisabledTools` at runtime now drops out of `tools/list` and is flagged `disabled` in `/mcp/_discover` ([#13](https://github.com/tekthar/abp-mcp/issues/13), Stage A). Both read `IOptions<AbpMcpOptions>`, a cache separate from the `IOptionsMonitor` instance the dispatcher reads, so the tool was refused on call but still advertised. They now read `IOptionsMonitor<AbpMcpOptions>.CurrentValue`.
 - A malformed tool argument now returns `VALIDATION_ERROR` naming the parameter and JSON path, instead of the SDK's generic error ([#50](https://github.com/tekthar/abp-mcp/issues/50)).

@@ -14,6 +14,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using ModelContextProtocol.Server;
+using Volo.Abp.AspNetCore.Mvc;
 using Volo.Abp.Settings;
 
 namespace AbpMcp;
@@ -47,6 +48,11 @@ public static class AbpMcpBuilderExtensions
         services.TryAddScoped<IAbpMcpDispatcher, AbpMcpDispatcher>();
         services.TryAddSingleton(TimeProvider.System);
         services.TryAddSingleton<IDisabledToolsProvider, DisabledToolsProvider>();
+
+        // Assembly registration: discover [McpTool] assemblies from the ABP module graph, then make sure
+        // every exposed assembly is registered with ConventionalControllers so ABP's api-definition sees it.
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IPostConfigureOptions<AbpMcpOptions>, AutoDiscoveredAssemblies>());
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IPostConfigureOptions<AbpAspNetCoreMvcOptions>, ConventionalControllersBridge>());
 
         // The AbpMcp.DisabledTools setting definition. Registered explicitly rather than left to ABP's
         // convention scan, so it exists for hosts that call AddAbpMcp without AbpMcpModule too.

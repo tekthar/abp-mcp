@@ -103,7 +103,20 @@ public sealed class AbpMcpOptions
     /// });
     /// </code>
     /// </example>
+    /// <remarks>
+    /// Each registered assembly is also registered with ABP's <c>ConventionalControllers</c> (unless the
+    /// host already did), so this call alone is enough. With <see cref="AutoDiscoverAssemblies"/> on, most
+    /// hosts need no registration at all.
+    /// </remarks>
     public ExposedAssembliesCollection ExposedAssemblies { get; } = new();
+
+    /// <summary>
+    /// When true (default), every ABP module assembly that declares <c>[McpTool]</c> services is added to
+    /// <see cref="ExposedAssemblies"/> automatically, so <c>[DependsOn]</c> on the module is enough. Only
+    /// assemblies that reference abp-mcp directly are scanned. Set false to expose only the assemblies
+    /// you register yourself.
+    /// </summary>
+    public bool AutoDiscoverAssemblies { get; set; } = true;
 
     /// <summary>
     /// Pluggable tool-name normalizer. The default strips <c>AppService</c>/<c>ApplicationService</c>/<c>Service</c>
@@ -197,6 +210,9 @@ public sealed class ExposedAssembliesCollection : IEnumerable<ExposedAssemblyEnt
     /// <summary>True when no assemblies have been registered (the reader will fall back to scanning all loaded ABP modules).</summary>
     public bool IsEmpty => _entries.Count == 0;
 
+    /// <summary>True when <paramref name="assembly"/> has been registered.</summary>
+    public bool Contains(Assembly assembly) => _entries.Any(e => e.Assembly == assembly);
+
     /// <inheritdoc/>
     public IEnumerator<ExposedAssemblyEntry> GetEnumerator() => _entries.GetEnumerator();
 
@@ -210,6 +226,12 @@ public sealed class ExposedAssemblyEntry
 {
     /// <summary>The assembly to scan.</summary>
     public Assembly Assembly { get; }
+
+    /// <summary>
+    /// True when abp-mcp added this entry by scanning the module graph
+    /// (<see cref="AbpMcpOptions.AutoDiscoverAssemblies"/>) rather than the host registering it.
+    /// </summary>
+    public bool IsAutoDiscovered { get; internal set; }
 
     /// <summary>Construct an entry for the given assembly.</summary>
     public ExposedAssemblyEntry(Assembly assembly) => Assembly = assembly;

@@ -97,6 +97,8 @@ public override void ConfigureServices(ServiceConfigurationContext context)
 }
 ```
 
+Registration is usually unnecessary: with `AutoDiscoverAssemblies` (default on), a post-configure step walks `IModuleContainer.Modules` and adds every module assembly that references abp-mcp and declares `[McpTool]` services. A second post-configure step registers every `ExposedAssemblies` entry with `ConventionalControllers` unless the host already did, keeping the host's settings. ABP reads `ConventionalControllers` at application initialization, after all options actions, so this is early enough (#55, superseding #9).
+
 Tag services for exposure:
 
 ```csharp
