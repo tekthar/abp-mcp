@@ -30,7 +30,7 @@ public class DiagnosticsDiscoverFilteringTests
 
         var authorizer = Substitute.For<IAbpMcpToolAuthorizer>();
         authorizer.AuthorizeAsync(Arg.Any<ToolDescriptor>(), Arg.Any<HttpContext?>())
-            .Returns(call => call.Arg<ToolDescriptor>().RequiredPermissions.Count == 0
+            .Returns(call => call.Arg<ToolDescriptor>()!.RequiredPermissions.Count == 0
                 ? AbpMcpToolAuthorizationResult.Success()
                 : AbpMcpToolAuthorizationResult.Fail("Missing permission: Admin.Purge"));
 

@@ -20,18 +20,16 @@ updates:
       # net10.0; take the next major together with a deliberate target-framework change.
       - dependency-name: "Microsoft.Extensions.*"
         update-types: ["version-update:semver-major"]
+      # ABP is the package's floor, not just a dependency: raising $(AbpVersion) in
+      # Directory.Build.props raises the minimum ABP every consumer must run, so it is bumped
+      # by hand, deliberately. Patch releases already float through the 10.1.* range.
+      - dependency-name: "Volo.Abp.*"
     groups:
-      # Roll Microsoft + ABP minor/patch bumps into one PR each so the queue stays clean.
+      # Roll Microsoft minor/patch bumps into one PR so the queue stays clean.
       microsoft:
         patterns:
           - "Microsoft.*"
           - "System.*"
-        update-types:
-          - "minor"
-          - "patch"
-      abp:
-        patterns:
-          - "Volo.Abp.*"
         update-types:
           - "minor"
           - "patch"
