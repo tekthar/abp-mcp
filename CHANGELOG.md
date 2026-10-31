@@ -10,6 +10,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 - **`net9.0` support.** The package now targets `net10.0` only, with ABP `10.1.*` as the minimum. `0.3.0-alpha` is the last release for .NET 9 / ABP 9.2; hosts still on .NET 9 should stay on it. CI and the release workflow install only the .NET 10 SDK.
 
+### Changed
+
+- **MCP SDK `ModelContextProtocol.AspNetCore` 1.2.0 → 2.3.0, with the transport pinned to stateful sessions.** SDK 2.x defaults to stateless mode (MCP protocol revision `2026-07-28`, SEP-2567), which has no session to push `notifications/tools/list_changed` over; the `DisabledTools` kill switch and `IAbpMcpToolListChangedNotifier` would have stopped reaching connected agents. `AddAbpMcp` now sets `HttpServerTransportOptions.SessionMode = Stateful`, so behavior is unchanged from 0.3.0-alpha. A host that wants stateless mode (and gives up `list_changed`) can override it with `services.Configure<HttpServerTransportOptions>(o => o.SessionMode = HttpServerSessionMode.Stateless)`.
+
 ## [0.3.0-alpha] — 2026-10-30
 
 Hardens the MCP path to match ABP's REST path (authorization, validation, unit of work, features, auditing), makes `tools/list` work with every MCP client, and validates the transport. Contains behavior changes; see **Changed**.
