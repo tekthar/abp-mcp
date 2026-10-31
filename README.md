@@ -33,6 +33,8 @@ sequenceDiagram
 
 **Status:** alpha. Available on NuGet as a prerelease — `dotnet add package AbpMcp --prerelease`.
 
+**Requires:** .NET 10 and ABP Framework 10.1 or later. (`0.3.0-alpha` is the last release that supports .NET 9 / ABP 9.2.)
+
 ## Why
 
 Every ABP app already declares its business logic as `IApplicationService` with typed DTOs, permission attributes, XML docs, and multi-tenancy awareness. That is richer metadata than any OpenAPI spec. Generic OpenAPI → MCP converters produce low-quality servers that confuse agents. `abp-mcp` skips the OpenAPI middleman entirely and generates from ABP's own API description pipeline — the same one that powers ABP's TS/C# proxy generators.

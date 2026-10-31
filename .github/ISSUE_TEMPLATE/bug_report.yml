@@ -50,7 +50,7 @@ body:
     id: abp-version
     attributes:
       label: ABP Framework version
-      placeholder: "9.2.4"
+      placeholder: "10.1.1"
     validations:
       required: true
 

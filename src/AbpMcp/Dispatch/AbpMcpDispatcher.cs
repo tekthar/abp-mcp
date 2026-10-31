@@ -151,8 +151,7 @@ internal sealed class AbpMcpDispatcher : IAbpMcpDispatcher
         // ABP validator the interceptor uses (DataAnnotations, IValidatableObject, contributors),
         // so a tools/call cannot pass input the parallel HTTP endpoint would reject.
         var validator = services.GetRequiredService<IMethodInvocationValidator>();
-        // ABP 9.2 annotates parameterValues as object[] (10.x as object?[]); null entries are what it validates.
-        await validator.ValidateAsync(new MethodInvocationValidationContext(service, descriptor.Method!, (object[])invocationArgs))
+        await validator.ValidateAsync(new MethodInvocationValidationContext(service, descriptor.Method!, invocationArgs))
             .ConfigureAwait(false);
 
         // Disposed without CompleteAsync when the method throws, which discards its writes.

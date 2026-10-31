@@ -1,7 +1,7 @@
 <Project>
   <PropertyGroup>
-    <!-- Multi-targeted: net9.0 keeps existing ABP 9.2 users working; net10.0 adds ABP 10 support. -->
-    <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
+    <!-- .NET 10 / ABP 10 only. net9.0 (ABP 9.2) support was dropped in 0.4.0-alpha. -->
+    <TargetFramework>net10.0</TargetFramework>
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -12,18 +12,13 @@
     <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
   </PropertyGroup>
 
-  <!-- Per-target dependency versions. net10 pins ABP 10.1 (the version the first production
-       consumer runs); net9 stays on ABP 9.2. Referenced as $(AbpVersion)/$(EfCoreVersion)/
-       $(MsExtVersion) from each csproj so there is one place to bump. -->
-  <PropertyGroup Condition="'$(TargetFramework)' == 'net10.0'">
+  <!-- Dependency versions. ABP 10.1 is the floor (the version the first production consumer runs);
+       raising it raises the minimum ABP every consumer must run. Referenced as $(AbpVersion)/
+       $(EfCoreVersion)/$(MsExtVersion) from each csproj so there is one place to bump. -->
+  <PropertyGroup>
     <AbpVersion>10.1.*</AbpVersion>
     <EfCoreVersion>10.0.*</EfCoreVersion>
     <MsExtVersion>10.0.*</MsExtVersion>
-  </PropertyGroup>
-  <PropertyGroup Condition="'$(TargetFramework)' != 'net10.0'">
-    <AbpVersion>9.2.*</AbpVersion>
-    <EfCoreVersion>9.0.*</EfCoreVersion>
-    <MsExtVersion>9.0.*</MsExtVersion>
   </PropertyGroup>
 
   <PropertyGroup Label="Package metadata">

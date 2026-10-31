@@ -6,7 +6,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
-Nothing yet. The next changes after `v0.3.0-alpha` ship here.
+### Removed
+
+- **`net9.0` support.** The package now targets `net10.0` only, with ABP `10.1.*` as the minimum. `0.3.0-alpha` is the last release for .NET 9 / ABP 9.2; hosts still on .NET 9 should stay on it. CI and the release workflow install only the .NET 10 SDK.
 
 ## [0.3.0-alpha] — 2026-10-30
 

@@ -26,7 +26,7 @@ ABP Framework apps already declare their business logic as `IApplicationService`
 
 - Open source passion project — one developer's evenings and weekends.
 - Sponsorship is a bonus, not a requirement. Success = real users installing and starring.
-- .NET 9 / 10. Target ABP Framework v8+.
+- .NET 10. Target ABP Framework 10.1+.
 - Must respect ABP's existing permission system with zero configuration.
 - Must not require ABP source modifications — works against stock ABP.
 
