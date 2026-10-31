@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-`abp-mcp` is in pre-alpha. Until v1.0.0, security fixes are applied to the latest release only. There is no LTS branch.
+`abp-mcp` is pre-1.0 (0.x). Until v1.0.0, security fixes are applied to the latest release only. There is no LTS branch.
 
 | Version | Supported |
 |---------|-----------|
