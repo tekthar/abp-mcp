@@ -149,9 +149,22 @@ public sealed class LoanAppService : ILoanAppService, ITransientDependency
 
 public interface ILoanAppService : IApplicationService
 {
+    /// <summary>Check out an edition to a member for a number of days (default 14, at most 90). Refused with LIBRARY:MEMBER_SUSPENDED if the member is suspended, LIBRARY:NO_COPIES_AVAILABLE if every copy is on loan, or LIBRARY:MEMBER_NOT_FOUND / LIBRARY:EDITION_NOT_FOUND for an unknown id.</summary>
+    /// <param name="input">The member, the edition, and optionally the loan length in days.</param>
     Task<LoanDto> CheckOutAsync(CheckOutDto input);
+
+    /// <summary>Return a loaned copy so it can be checked out again. Refused with LIBRARY:LOAN_ALREADY_RETURNED if it was already returned.</summary>
+    /// <param name="loanId">The loan to close.</param>
     Task<LoanDto> ReturnAsync(Guid loanId);
+
+    /// <summary>Extend an active loan's due date by some days (default 7, at most 30). Refused with LIBRARY:LOAN_NOT_ACTIVE if the loan is not active.</summary>
+    /// <param name="input">The loan and the number of extra days.</param>
     Task<LoanDto> RenewAsync(RenewLoanDto input);
+
+    /// <summary>List a member's loans, newest first (at most 100), including returned ones.</summary>
+    /// <param name="memberId">The member whose loans to list.</param>
     Task<IReadOnlyList<LoanDto>> ListForMemberAsync(Guid memberId);
+
+    /// <summary>List active loans that are past their due date, most overdue first (at most 100).</summary>
     Task<IReadOnlyList<LoanDto>> ListOverdueAsync();
 }

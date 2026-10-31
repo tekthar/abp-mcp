@@ -1,84 +1,83 @@
 # abp-mcp
 
-[![CI](https://github.com/tekthar/abp-mcp/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/tekthar/abp-mcp/actions/workflows/ci.yml)
 [![NuGet](https://img.shields.io/nuget/v/AbpMcp.svg?logo=nuget)](https://www.nuget.org/packages/AbpMcp)
+[![NuGet downloads](https://img.shields.io/nuget/dt/AbpMcp.svg)](https://www.nuget.org/packages/AbpMcp)
+[![CI](https://github.com/tekthar/abp-mcp/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/tekthar/abp-mcp/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/github/license/tekthar/abp-mcp.svg)](https://github.com/tekthar/abp-mcp/blob/main/LICENSE)
 
-> Auto-generate a Model Context Protocol (MCP) server from your ABP Framework application.
-> One NuGet, one line, and every `[McpTool]`-tagged Application Service is reachable by Claude, Cursor, and every MCP-compatible agent.
-> In-process. Permission-aware. Tenancy-aware — agent calls flow through ABP's normal `ICurrentTenant` pipeline, so a token issued for a tenant calls into that tenant's data.
+**Your ABP app, ready for AI agents, with the permissions you already have.**
 
-```mermaid
-sequenceDiagram
-    autonumber
-    participant Agent as 🤖 Claude / Cursor / any MCP client
-    participant MCP as /mcp endpoint<br/>(in-process)
-    participant Service as Your <code>IApplicationService</code><br/>(BookAppService, etc.)
-    participant DB as 💾 EF Core / your data store
+abp-mcp turns your ABP Framework application services into tools that Claude, Cursor and any other
+[Model Context Protocol](https://modelcontextprotocol.io) (MCP) client can call. Add one attribute, and an agent can
+use your app the way a signed-in user does: same permissions, same tenant, same validation, same business rules.
 
-    Agent->>MCP: tools/list
-    MCP->>MCP: filter by ABP permissions<br/>of the bearer token
-    MCP-->>Agent: only the tools this user can call
-
-    Agent->>MCP: tools/call Loan_CheckOut(memberId, editionId)
-    MCP->>MCP: re-check permission +<br/>map JSON args to DTO
-    MCP->>Service: CheckOutAsync(input)
-    Service->>DB: INSERT INTO Loans
-    DB-->>Service: ok
-    Service-->>MCP: LoanDto
-    MCP-->>Agent: structured result + content blocks
+```csharp
+[McpTool]                                              // ← the whole integration
+public class LoanAppService : ApplicationService, ILoanAppService
+{
+    /// <summary>Check out an edition to a member. Refused with LIBRARY:MEMBER_SUSPENDED
+    /// if the member is suspended.</summary>
+    [Authorize(LibraryPermissions.Loans.CheckOut)]
+    public async Task<LoanDto> CheckOutAsync(CheckOutDto input) { /* your code */ }
+}
 ```
 
-> A 30-second screen recording of this flow against the bundled Library sample is tracked as [#18](https://github.com/tekthar/abp-mcp/issues/18). PRs welcome.
+An agent connected to `/mcp` now sees a `Loan_CheckOut` tool, described by your doc comment, with a JSON schema built
+from `CheckOutDto`, but only if its token has `Loans.CheckOut`. Calling it runs your method with the same validation,
+unit of work, feature checks and audit logging as your REST endpoint.
 
-**Status:** pre-1.0 (0.x): usable, but the API can still change between minor versions. Available on NuGet — `dotnet add package AbpMcp`.
+![An agent finds a book, is refused by a business rule, fixes the cause and checks the book out](https://raw.githubusercontent.com/tekthar/abp-mcp/main/docs/assets/demo.gif)
 
-**Requires:** .NET 10 and ABP Framework 10.1 or later. (`0.3.0-alpha` is the last release that supports .NET 9 / ABP 9.2.)
+<sub>Real MCP traffic from the bundled Library sample, rendered from a recorded session.</sub>
 
-## Why
+## Why you'll like it
 
-Every ABP app already declares its business logic as `IApplicationService` with typed DTOs, permission attributes, XML docs, and multi-tenancy awareness. That is richer metadata than any OpenAPI spec. Generic OpenAPI → MCP converters produce low-quality servers that confuse agents. `abp-mcp` skips the OpenAPI middleman entirely and generates from ABP's own API description pipeline — the same one that powers ABP's TS/C# proxy generators.
+- **Zero config**: depend on `AbpMcpModule`, map the endpoint, tag a service. abp-mcp finds your `[McpTool]`
+  assemblies in the ABP module graph by itself.
+- **Same rules as your REST API**: `[Authorize]` (permissions, roles, schemes), validation, unit of work,
+  `[RequiresFeature]`, multi-tenancy and audit logging all apply to every tool call.
+- **Agents only see what they may call**: `tools/list` is filtered by the caller's permissions, and every call is
+  checked again.
+- **Opt-in, never "expose everything"**: a service is invisible until you mark it `[McpTool]`, and `[McpIgnore]`
+  hides single methods.
+- **Descriptions agents understand**: your XML doc comments become tool and parameter descriptions. Schemas come from
+  your real DTOs, with enums, nested objects and DataAnnotations constraints.
+- **Errors agents can act on**: your business exception codes reach the agent as `[LIBRARY:MEMBER_SUSPENDED] …`, and
+  invalid input names the field. Never a stack trace.
+- **Built for production**: turn a tool off on every instance without a redeploy, protect local servers from
+  malicious web pages, and push `tools/list_changed` to connected agents.
+- **Explains itself**: `/mcp/_explain` tells you why a method is, or isn't, a tool.
 
-## Quickstart
-
-Install the NuGet:
+## Install
 
 ```bash
 dotnet add package AbpMcp
 ```
 
-Add `AbpMcpModule` to your host module's `[DependsOn(...)]` and mount the endpoint:
+Requires .NET 10 and ABP Framework 10.1 or later. (`0.3.0-alpha` is the last release for .NET 9 / ABP 9.2.)
+
+## Crash course
+
+### 1. Mount the endpoint
+
+Add `AbpMcpModule` to your host module and map `/mcp`:
 
 ```csharp
-[DependsOn(
-    typeof(AbpAspNetCoreMvcModule),
-    typeof(AbpMcpModule),
-    /* your other modules */)]
+[DependsOn(typeof(AbpMcpModule) /*, your other modules */)]
 public class MyAppHttpApiHostModule : AbpModule
 {
-    public override void ConfigureServices(ServiceConfigurationContext context)
-    {
-        Configure<AbpMcpOptions>(opts =>
-        {
-            opts.Path = "/mcp";
-        });
-    }
-
     public override void OnApplicationInitialization(ApplicationInitializationContext context)
     {
         var app = context.GetApplicationBuilder();
         app.UseRouting();
-        app.UseConfiguredEndpoints(endpoints =>
-        {
-            endpoints.MapAbpMcp();
-        });
+        app.UseConfiguredEndpoints(endpoints => endpoints.MapAbpMcp());
     }
 }
 ```
 
-Tag the services you want agent-accessible. No assembly registration is needed:
-abp-mcp scans the ABP module graph for assemblies that declare `[McpTool]` services
-and registers them with ABP's `ConventionalControllers` itself.
+By default `/mcp` requires an authenticated caller, like the rest of your API.
+
+### 2. Tag your services
 
 ```csharp
 [McpTool]
@@ -88,8 +87,13 @@ public class ProductAppService : ApplicationService, IProductAppService
     public Task<ProductDto> CreateAsync(CreateProductDto input) => /* ... */;
 }
 ```
-To pick assemblies yourself, register them and turn discovery off. Either form
-also registers the assembly with `ConventionalControllers`, unless you already did:
+
+Each public method becomes a tool named `Service_Method`, so `ProductAppService.CreateAsync` is `Product_Create`.
+`[McpTool]` on a single method exposes just that method, and `[McpIgnore]` hides one (also when declared on the
+interface).
+
+No assembly registration is needed: abp-mcp scans the module graph for assemblies that reference it and declare
+`[McpTool]` services. To choose assemblies yourself, turn discovery off and register them:
 
 ```csharp
 Configure<AbpMcpOptions>(opts =>
@@ -99,94 +103,118 @@ Configure<AbpMcpOptions>(opts =>
 });
 ```
 
-Only assemblies that reference the `AbpMcp` package directly are scanned. If a
-service inherits `[McpTool]` from a base class in another assembly, register its
-assembly explicitly.
+### 3. Connect an agent
 
-### Customising tool descriptions and names
+Any MCP client that speaks streamable HTTP can connect. With [Claude Code](https://claude.com/claude-code):
 
-By default, each exposed method receives a mechanical description based on its
-class and method name — for example, `Invoke OrderAppService.PlaceOrderAsync.`.
-That is often enough for simple CRUD, but agents rely on descriptions to choose
-the right tool the first time. When a method carries business semantics the name
-alone does not convey, override the description explicitly:
+```bash
+claude mcp add --transport http my-app https://your-host/mcp --header "Authorization: Bearer $TOKEN"
+```
 
-```csharp
-// Default: agent sees "Invoke LoanAppService.CheckOutAsync."
-[McpTool]
-public class LoanAppService : ApplicationService, ILoanAppService
+Agents call your tools with the same bearer tokens your ABP identity server issues to every other client.
+
+### 4. Check what's exposed
+
+Two diagnostic endpoints answer the "why isn't my tool showing up?" question without a debugger:
+
+```bash
+curl https://your-host/mcp/_discover   # the tools the caller can see, with schemas and required permissions
+curl 'https://your-host/mcp/_explain?service=Loan'
+```
+
+```json
 {
-    // Override: agent sees your business-intent description instead
-    [McpTool(Description = "Check out a library edition to a member. " +
-        "Pre-validates member status and copy availability; " +
-        "rejects with LIBRARY:NO_COPIES_AVAILABLE if all copies are checked out " +
-        "or LIBRARY:MEMBER_SUSPENDED if the member is suspended.")]
-    public Task<LoanDto> CheckOutAsync(CheckOutDto input) => /* ... */;
+  "service": "AbpMcp.Sample.Library.LoanAppService",
+  "method": "CheckOutAsync",
+  "included": true,
+  "reason": "Included: [McpTool] on class LoanAppService."
 }
 ```
 
-Override descriptions for tools where the action has business semantics the
-method name does not carry — refunds, cancellations, escalations, anything
-destructive or irreversible, or any method whose failure modes an agent should
-know about before calling it.
+### 5. Write descriptions agents understand
 
-#### Overriding the tool name
-
-The auto-generated name follows the pattern `ServicePrefix_MethodName`
-(e.g., `Loan_CheckOut`). Override it only when two services in different
-assemblies produce a colliding tool name and you want to disambiguate without
-relying on the configured prefix:
+Agents choose tools by their descriptions. abp-mcp uses your XML doc comments: the `<summary>` describes the tool and
+each `<param>` describes its argument. When a method has no docs, the description falls back to a mechanical
+`Invoke LoanAppService.CheckOutAsync.`, so document the methods agents will use, especially anything destructive and
+the errors it can return. To override a description or name without touching the docs:
 
 ```csharp
-[McpTool(Name = "Library_CheckOut")]
-public Task<LoanDto> CheckOutAsync(CheckOutDto input) => /* ... */;
+[McpTool(Description = "Refund an order in full. Irreversible.", Name = "Billing_Refund")]
+public Task RefundAsync(Guid orderId) => /* ... */;
 ```
 
-Name overrides are rare. Prefer fixing a prefix collision by adjusting
-`AbpMcpOptions` before reaching for a per-method `Name` override.
+## What the agent sees
 
-#### Verifying your overrides
+This is the bundled sample, unedited. `tools/list` advertises your doc comment and a schema built from the DTO:
 
-Both `Description` and `Name` overrides are visible immediately at the
-discovery endpoint — no agent required:
-
-```bash
-curl http://localhost:5000/mcp/_discover | jq '.tools[] | {name, description}'
+```json
+{
+  "name": "Loan_CheckOut",
+  "description": "Check out an edition to a member for a number of days (default 14, at most 90). Refused with LIBRARY:MEMBER_SUSPENDED if the member is suspended, LIBRARY:NO_COPIES_AVAILABLE if every copy is on loan, or LIBRARY:MEMBER_NOT_FOUND / LIBRARY:EDITION_NOT_FOUND for an unknown id.",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "input": {
+        "type": "object",
+        "properties": {
+          "memberId": { "type": "string", "format": "uuid" },
+          "editionId": { "type": "string", "format": "uuid" },
+          "durationDays": { "type": "integer" }
+        },
+        "description": "The member, the edition, and optionally the loan length in days."
+      }
+    },
+    "required": ["input"]
+  }
+}
 ```
 
-Run this after adding an override to confirm the change took effect before
-pointing a real agent at the server.
+When a business rule says no, the agent gets your code and message, and can explain it or fix the cause:
 
-Point Claude (or any MCP client) at `https://your-host/mcp` with a bearer token from your ABP identity server, and the agent calls every exposed tool with the same permissions as a regular user.
+```text
+→ tools/call Loan_CheckOut { "input": { "memberId": "1111…", "editionId": "6050…" } }
+← isError: true
+  [LIBRARY:MEMBER_SUSPENDED] Member 'Demo Member' is suspended (Unpaid late fees). Reinstate before checking out.
+```
 
-> Not in an `AbpModule`? The raw `builder.Services.AddAbpMcp(...)` + `app.MapAbpMcp()` path works too. The module-style example above is the one most ABP solutions reach for first.
+When it succeeds, the result is your DTO, as structured content that matches the advertised output schema:
+
+```json
+{
+  "titleName": "Foundation",
+  "format": "Paperback",
+  "memberName": "Demo Member",
+  "dueAt": "2026-11-14T21:19:46.3880113Z",
+  "status": "Active",
+  "isOverdue": false
+}
+```
+
+A caller without the permission never sees the tool, and gets `[FORBIDDEN] Missing permission: …` if it calls it
+anyway. Every error code is a constant in `AbpMcpErrorCodes`.
 
 ## Try the sample (60 seconds, zero setup)
 
-The repo ships with a runnable ABP host that demonstrates the full surface against a small library domain (Titles, Editions, Members, Loans) seeded with classic books.
+The repo ships a runnable ABP host with a small library domain (titles, editions, members, loans), seeded with
+classic books. It has 16 tools, and anonymous access is turned on so you can try it without a token.
 
 ```bash
 dotnet run --project samples/AbpMcp.Sample
 ```
 
-Then in another terminal:
-
 ```bash
-# What tools are live?
-curl http://localhost:5000/mcp/_discover | jq '.tools[].name'
-# → Catalog_SearchTitles, Catalog_GetTitle, Catalog_AddTitle,
-#   Catalog_AddEdition, Catalog_ListAvailableEditions,
-#   Loan_CheckOut, Loan_Return, Loan_Renew, Loan_ListForMember,
-#   Loan_ListOverdue, Member_Register, Member_Get, Member_List,
-#   Member_Suspend, Member_Reinstate
-
-# Why isn't a particular service showing up?
-curl 'http://localhost:5000/mcp/_explain?service=Loan'
+claude mcp add --transport http library http://localhost:5000/mcp
 ```
 
-Point Claude Desktop at `http://localhost:5000/mcp` by adding this to your
-`claude_desktop_config.json` (`%APPDATA%\Claude\claude_desktop_config.json` on
-Windows, `~/Library/Application Support/Claude/claude_desktop_config.json` on macOS):
+Then ask Claude to find *Foundation* and check it out for the demo member. Or explore it from a terminal:
+
+```bash
+curl http://localhost:5000/mcp/_discover | jq '.tools[] | {name, description}'
+```
+
+For Claude Desktop, add this to `claude_desktop_config.json`
+(`%APPDATA%\Claude\claude_desktop_config.json` on Windows, `~/Library/Application Support/Claude/claude_desktop_config.json` on macOS)
+and restart it:
 
 ```jsonc
 {
@@ -199,123 +227,154 @@ Windows, `~/Library/Application Support/Claude/claude_desktop_config.json` on ma
 }
 ```
 
-Restart Claude Desktop. The agent can now search the catalog, register members,
-and check books out — every call hitting a real `IApplicationService` and
-persisting through EF Core.
+## How it works
+
+abp-mcp runs inside your ABP host. It reads the same API description ABP uses for its own client proxies, keeps the
+`[McpTool]` services, and serves them through the official [MCP C# SDK](https://github.com/modelcontextprotocol/csharp-sdk):
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Agent as 🤖 Claude / Cursor / any MCP client
+    participant MCP as /mcp endpoint<br/>(in-process)
+    participant Service as Your <code>IApplicationService</code>
+    participant DB as 💾 EF Core / your data store
+
+    Agent->>MCP: tools/list
+    MCP->>MCP: filter by the caller's ABP permissions
+    MCP-->>Agent: only the tools this user can call
+
+    Agent->>MCP: tools/call Loan_CheckOut
+    MCP->>MCP: re-check permission, validate input,<br/>features, unit of work, audit
+    MCP->>Service: CheckOutAsync(input)
+    Service->>DB: INSERT INTO Loans
+    Service-->>MCP: LoanDto
+    MCP-->>Agent: structured result
+```
+
+### Compared with a generic OpenAPI → MCP bridge
+
+| | abp-mcp | A generic OpenAPI → MCP bridge (typical) |
+|---|---|---|
+| Runs | Inside your ABP host, one NuGet package | As a separate process in front of your API |
+| What becomes a tool | Only what you mark `[McpTool]` | Every operation in the spec, unless you filter |
+| `tools/list` per user | Filtered by the caller's ABP permissions | The same list for everyone |
+| Descriptions | Your XML doc comments, or `[McpTool(Description)]` | OpenAPI summaries, if there are any |
+| Errors | Your business codes: `[LIBRARY:MEMBER_SUSPENDED] …` | An HTTP status and a response body |
+| "Why isn't this a tool?" | `/mcp/_explain` | – |
+| Turn one tool off everywhere | An ABP setting, no redeploy | Reconfigure or redeploy the bridge |
+
+## Running in production
+
+### Authentication and tenancy
+
+`/mcp` sits on your normal request pipeline, so ABP's authentication and `ICurrentTenant` resolution work unchanged. A
+token issued for tenant `T` calls into tenant `T`'s data, and header, cookie or route tenant resolvers work as for any
+ABP endpoint. Cross-tenant impersonation is deliberately not supported.
 
 ### Browser-based clients
 
-Desktop agents and CLIs send no `Origin` header and connect as-is. A request that
-does carry one (a browser page, such as the MCP Inspector's web UI) is refused with
-`403` unless its origin is listed, as the MCP transport spec requires. This stops an
-arbitrary web page from driving your local or intranet MCP server through the
-user's browser:
+Desktop agents and CLIs send no `Origin` header and connect as they are. A request that carries one, such as the MCP
+Inspector's web UI, is refused with `403` unless its origin is listed, as the MCP transport spec requires. This stops a
+web page from driving your local or intranet MCP server through the user's browser:
 
 ```csharp
-Configure<AbpMcpOptions>(opts =>
-{
-    opts.AllowedOrigins.Add("http://localhost:6274"); // MCP Inspector
-});
+Configure<AbpMcpOptions>(opts => opts.AllowedOrigins.Add("http://localhost:6274")); // MCP Inspector
 ```
 
-## Disabling a tool (kill switch)
+### Turning a tool off (kill switch)
 
-To pull a misbehaving tool without a redeploy, disable it by name. A disabled tool
-disappears from `tools/list`, is refused on `tools/call` with `DISABLED`, and is
-flagged `"disabled": true` in `/mcp/_discover`.
+To pull a misbehaving tool without a redeploy, disable it by name. It disappears from `tools/list`, is refused on
+`tools/call` with `DISABLED`, and is flagged `"disabled": true` in `/mcp/_discover`. To make connected agents re-read
+the tool list right away, call `IAbpMcpToolListChangedNotifier.NotifyToolListChangedAsync()`.
 
-**Every instance at once** — set the `AbpMcp.DisabledTools` ABP setting to a
-comma-separated list of tool names. With [ABP Setting Management](https://abp.io/docs/latest/modules/setting-management)
-installed, set it as a global value and every instance picks it up within
-`AbpMcpOptions.DisabledToolsSettingCacheDuration` (default 10 seconds). This needs
-the shared distributed cache (e.g. Redis) a multi-instance ABP deployment already
-uses; with ABP's default in-memory cache, other instances keep their cached value
-until it expires.
+**On every instance**: set the global ABP setting `AbpMcp.DisabledTools` to a comma-separated list of tool names.
+With [ABP Setting Management](https://abp.io/docs/latest/modules/setting-management) and the shared distributed cache
+(e.g. Redis) a multi-instance deployment already uses, every instance picks it up within
+`AbpMcpOptions.DisabledToolsSettingCacheDuration` (10 seconds by default):
 
 ```csharp
 await settingManager.SetGlobalAsync(AbpMcpSettingNames.DisabledTools, "Loan_CheckOut,Member_Suspend");
 ```
 
-Without Setting Management, put it in configuration instead:
+Without Setting Management, put it in configuration:
+`{ "Settings": { "AbpMcp.DisabledTools": "Loan_CheckOut,Member_Suspend" } }`. Tenant and user values are ignored.
 
-```json
-{ "Settings": { "AbpMcp.DisabledTools": "Loan_CheckOut,Member_Suspend" } }
+**In this process only**: add names to `AbpMcpOptions.DisabledTools`. A tool listed in either place is disabled.
+
+## Everything else
+
+- **Dynamic tools and enrichment**: implement `IAbpMcpAddin` to add tools that no single service backs, or to enrich
+  the generated ones. Change the tool set at runtime and notify connected agents with
+  `IAbpMcpToolListChangedNotifier`. See [dynamic add-ins](https://github.com/tekthar/abp-mcp/blob/main/docs/dynamic-addins.md).
+- **Naming**: `AbpMcpOptions.ToolNamePrefix`, or replace `ToolNameNormalizer` entirely.
+- **Output schemas**: on by default (`IncludeOutputSchema`); list results are advertised and returned as
+  `{ "result": [...] }`, as MCP requires an object.
+- **Without an ABP module**: `builder.Services.AddAbpMcp(...)` and `app.MapAbpMcp()` work too.
+
+## How do we know it works?
+
+Agents act on behalf of real users, so a gap between the MCP path and your REST API would be a security hole. More than
+170 automated tests run on every build, in three layers:
+
+- **End to end, with the official MCP SDK client**: the bundled sample is booted in memory and driven over streamable
+  HTTP. Tests cover the `tools/list` shape, structured results, error codes, `Origin` rules, session lifetime and
+  `tools/list_changed` delivery.
+- **Same rules as REST, one concern at a time**: integration tests cover `[Authorize]` (permissions, roles, schemes),
+  ABP validation, unit-of-work rollback, `[RequiresFeature]` and `[RequiresGlobalFeature]`, and audit logging. These
+  tests run for both virtual and non-virtual methods, because ABP's interceptors only cover virtual ones.
+- **List and call are both gated**: `tools/list` hides what the caller can't use and `tools/call` checks again, and
+  both paths are tested.
+
+Every bug fix ships with a test that would have caught it, and CodeQL scans every pull request.
+
+## Documentation
+
+| Guide | What it covers |
+|---|---|
+| [Dynamic add-ins](https://github.com/tekthar/abp-mcp/blob/main/docs/dynamic-addins.md) | `IAbpMcpAddin`, dynamic tools, enriching tools, changing the tool set at runtime |
+| [Design](https://github.com/tekthar/abp-mcp/blob/main/DESIGN.md) | Premises, the approaches considered, and what is deliberately out of scope |
+| [Changelog](https://github.com/tekthar/abp-mcp/blob/main/CHANGELOG.md) | What each release changed |
+
+The API reference ships as XML documentation, so your editor shows it as you type.
+
+## Status and roadmap
+
+This is **0.4.0**. It runs in production, but the API may still change before 1.0: minor versions may include breaking
+changes, and the [changelog](https://github.com/tekthar/abp-mcp/blob/main/CHANGELOG.md) describes them. Coming next:
+
+- choosing tools with type and method predicates ([#11](https://github.com/tekthar/abp-mcp/issues/11)) and
+  include/exclude filters ([#12](https://github.com/tekthar/abp-mcp/issues/12))
+- a Roslyn analyzer that flags `[McpTool]` on a non-application service ([#14](https://github.com/tekthar/abp-mcp/issues/14))
+- an eShopOnAbp integration sample ([#17](https://github.com/tekthar/abp-mcp/issues/17))
+
+## Have a question? Want to help?
+
+Questions, ideas and bug reports are welcome as [issues](https://github.com/tekthar/abp-mcp/issues). To contribute code
+or docs, read the [contributing guide](https://github.com/tekthar/abp-mcp/blob/main/CONTRIBUTING.md) first; it has the
+design rules every change follows. Please report security problems through
+[private reporting](https://github.com/tekthar/abp-mcp/blob/main/SECURITY.md), not in public issues.
+
+```
+src/AbpMcp/                      the library (package AbpMcp; net10.0)
+samples/AbpMcp.Sample/           the Library sample host (16 tools, seeded data)
+test/AbpMcp.Tests/               unit tests
+test/AbpMcp.IntegrationTests/    integration tests, and end-to-end tests with the MCP SDK client (EndToEnd/)
+docs/                            guides and README assets
 ```
 
-The setting is global: tenant and user values are ignored.
+To run the tests:
 
-**This process only** — add names to `AbpMcpOptions.DisabledTools`. Changes made
-through `IOptionsMonitor<AbpMcpOptions>` apply on the next request.
-
-A tool listed in either place is disabled.
-
-## Tenancy
-
-The MCP endpoint is mounted on the host's normal request pipeline, so ABP's
-`ICurrentTenant` resolution flows through unchanged. A bearer token issued for
-tenant `T` (with the `__tenant` claim set, the way ABP's identity server issues
-them) calls into tenant `T`'s data — no extra wiring. Host-level tenancy
-resolvers (header, cookie, route) work the same way they do for any ABP HTTP
-endpoint. Cross-tenant impersonation is intentionally *not* supported in v0.1.
-
-## Design
-
-See [DESIGN.md](https://github.com/tekthar/abp-mcp/blob/main/DESIGN.md) for the full design document:
-- Problem statement and premises
-- Approaches considered (reflection runtime, source generator, LLM-enhanced descriptions)
-- Test plan
-- Distribution plan
-
-## Repository layout
-
-```
-abp-mcp/
-├── src/
-│   └── AbpMcp/                    # the library
-│       ├── AbpMcpModule.cs         # ABP module
-│       ├── AbpMcpBuilderExtensions.cs  # AddAbpMcp / MapAbpMcp
-│       ├── AbpMcpOptions.cs
-│       ├── Attributes/             # [McpTool], [McpIgnore]
-│       ├── Metadata/               # ApiDefinitionReader, ToolDescriptorBuilder
-│       ├── Registration/           # DynamicMcpToolRegistry
-│       └── Dispatch/               # AbpMcpDispatcher
-├── samples/
-│   └── AbpMcp.Sample/              # runnable Library host (15 [McpTool] methods, seeded)
-├── test/
-│   ├── AbpMcp.Tests/               # unit tests (schema mapping, naming, options shape)
-│   └── AbpMcp.IntegrationTests/    # seed-DB → invoke-tool → verify-DB integration tests
-├── .github/
-│   ├── workflows/                  # CI build+test, release-on-tag (signs + publishes)
-│   ├── ISSUE_TEMPLATE/             # bug + feature forms
-│   └── PULL_REQUEST_TEMPLATE.md
-├── DESIGN.md                       # premises, alternatives, scope decisions
-├── CHANGELOG.md                    # release notes
-├── CONTRIBUTING.md                 # setup + design rules + PR process
-├── SECURITY.md                     # private vulnerability reporting
-├── CLAUDE.md                       # project guidance for agents & humans
-├── LICENSE                         # MIT
-└── README.md
+```bash
+dotnet test
 ```
 
-## Contributing
+## Credits and licence
 
-Pre-1.0. Direct PRs welcome — please skim [CONTRIBUTING.md](https://github.com/tekthar/abp-mcp/blob/main/CONTRIBUTING.md) before opening anything non-trivial. The non-negotiable design rules and the regression-test requirement are in there.
+MIT licence.
 
-Open invitations:
-- JSON Schema mapping for complex DTOs (recursion handling, polymorphism)
-- Streamable HTTP transport config refinements
-- Sample host integration against eShopOnAbp
+abp-mcp is built on [ABP Framework](https://abp.io) and the official
+[Model Context Protocol C# SDK](https://github.com/modelcontextprotocol/csharp-sdk). It is maintained by
+[Tekthar](https://github.com/tekthar).
 
-Every bug fix lands with a regression test. No exceptions.
-
-## Other docs
-
-- [DESIGN.md](https://github.com/tekthar/abp-mcp/blob/main/DESIGN.md) — premises, alternatives considered, scope decisions
-- [CHANGELOG.md](https://github.com/tekthar/abp-mcp/blob/main/CHANGELOG.md) — what shipped when
-- [CONTRIBUTING.md](https://github.com/tekthar/abp-mcp/blob/main/CONTRIBUTING.md) — setup, design rules, PR process
-- [SECURITY.md](https://github.com/tekthar/abp-mcp/blob/main/SECURITY.md) — vulnerability reporting (do NOT open a public issue for security)
-- [CLAUDE.md](https://github.com/tekthar/abp-mcp/blob/main/CLAUDE.md) — project guidance for Claude Code & humans
-
-## License
-
-[MIT](https://github.com/tekthar/abp-mcp/blob/main/LICENSE).
+**Sister project:** [CASL .NET](https://github.com/tekthar/casl-net), permissions you can read out loud, for .NET.
