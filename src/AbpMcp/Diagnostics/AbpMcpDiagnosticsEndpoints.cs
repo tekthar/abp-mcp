@@ -2,6 +2,7 @@ using System.Text.Json;
 using AbpMcp.Authorization;
 using AbpMcp.Metadata;
 using AbpMcp.Registration;
+using AbpMcp.Settings;
 using AbpMcp.Transport;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -67,8 +68,9 @@ public static class AbpMcpDiagnosticsEndpoints
     {
         var registry = context.RequestServices.GetRequiredService<IDynamicMcpToolRegistry>();
         var authorizer = context.RequestServices.GetRequiredService<IAbpMcpToolAuthorizer>();
-        // The monitor, not IOptions: DisabledTools changes at runtime (same source as tools/list).
-        var options = context.RequestServices.GetRequiredService<IOptionsMonitor<AbpMcpOptions>>().CurrentValue;
+        // Same source as tools/list, so a disabled tool is flagged here exactly when it is hidden there.
+        var disabledTools = await context.RequestServices.GetRequiredService<IDisabledToolsProvider>()
+            .GetDisabledToolsAsync(context.RequestAborted).ConfigureAwait(false);
         registry.Initialize();
 
         var rows = new List<object>(registry.Tools.Count);
@@ -76,7 +78,7 @@ public static class AbpMcpDiagnosticsEndpoints
         {
             if ((await authorizer.AuthorizeAsync(tool, context).ConfigureAwait(false)).Succeeded)
             {
-                rows.Add(ToDiscoveryRow(tool, options.DisabledTools.Contains(tool.Name)));
+                rows.Add(ToDiscoveryRow(tool, disabledTools.Contains(tool.Name)));
             }
         }
 

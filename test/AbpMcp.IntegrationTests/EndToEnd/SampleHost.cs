@@ -29,8 +29,14 @@ public sealed class SampleHost : IAsyncDisposable
     /// <summary>The root service provider of the running host.</summary>
     public IServiceProvider Services => _app.Services;
 
-    /// <summary>Boot the sample. <paramref name="configure"/> runs after the sample module's own options.</summary>
-    public static async Task<SampleHost> StartAsync(Action<AbpMcpOptions>? configure = null)
+    /// <summary>
+    /// Boot the sample. <paramref name="configure"/> runs after the sample module's own options;
+    /// <paramref name="configureBuilder"/> runs after the sample's services are registered, so it can
+    /// replace them or add configuration.
+    /// </summary>
+    public static async Task<SampleHost> StartAsync(
+        Action<AbpMcpOptions>? configure = null,
+        Action<WebApplicationBuilder>? configureBuilder = null)
     {
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions { EnvironmentName = "Development" });
         builder.WebHost.UseTestServer();
@@ -40,6 +46,8 @@ public sealed class SampleHost : IAsyncDisposable
         {
             builder.Services.Configure(configure);
         }
+
+        configureBuilder?.Invoke(builder);
 
         var app = builder.Build();
         await app.InitializeApplicationAsync();

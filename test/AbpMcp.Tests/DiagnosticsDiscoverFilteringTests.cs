@@ -4,6 +4,7 @@ using AbpMcp.Authorization;
 using AbpMcp.Diagnostics;
 using AbpMcp.Metadata;
 using AbpMcp.Registration;
+using AbpMcp.Settings;
 using FluentAssertions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
@@ -33,10 +34,14 @@ public class DiagnosticsDiscoverFilteringTests
                 ? AbpMcpToolAuthorizationResult.Success()
                 : AbpMcpToolAuthorizationResult.Fail("Missing permission: Admin.Purge"));
 
+        var disabledTools = Substitute.For<IDisabledToolsProvider>();
+        disabledTools.GetDisabledToolsAsync(Arg.Any<CancellationToken>())
+            .Returns(new HashSet<string>(StringComparer.Ordinal) { "Open_Disabled" });
+
         var services = new ServiceCollection()
             .AddSingleton(registry)
             .AddSingleton(authorizer)
-            .Configure<AbpMcpOptions>(o => o.DisabledTools.Add("Open_Disabled"))
+            .AddSingleton(disabledTools)
             .BuildServiceProvider();
 
         var context = new DefaultHttpContext { RequestServices = services };
