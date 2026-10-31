@@ -20,7 +20,7 @@ internal static class AbpMcpFeatureGate
             !GlobalFeatureHelper.IsGlobalFeatureEnabled(descriptor.ServiceType, out var globalFeature))
         {
             throw new AbpMcpToolException(
-                "DISABLED",
+                AbpMcpErrorCodes.Disabled,
                 $"Tool '{descriptor.Name}' belongs to the disabled global feature '{globalFeature?.Name}'.");
         }
 

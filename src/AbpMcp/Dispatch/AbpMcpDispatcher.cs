@@ -63,7 +63,7 @@ internal sealed class AbpMcpDispatcher : IAbpMcpDispatcher
         var disabledTools = await _disabledTools.GetDisabledToolsAsync(cancellationToken).ConfigureAwait(false);
         if (disabledTools.Contains(descriptor.Name))
         {
-            throw new AbpMcpToolException("DISABLED", $"Tool '{descriptor.Name}' is administratively disabled.");
+            throw new AbpMcpToolException(AbpMcpErrorCodes.Disabled, $"Tool '{descriptor.Name}' is administratively disabled.");
         }
 
         await EnsureAuthorizedAsync(httpContext, descriptor).ConfigureAwait(false);
@@ -96,7 +96,7 @@ internal sealed class AbpMcpDispatcher : IAbpMcpDispatcher
         if (descriptor.ServiceType is null || descriptor.Method is null)
         {
             throw new AbpMcpToolException(
-                "INTERNAL",
+                AbpMcpErrorCodes.Internal,
                 $"Tool '{descriptor.Name}' has neither a dynamic handler nor a service method to invoke.");
         }
 
@@ -212,7 +212,7 @@ internal sealed class AbpMcpDispatcher : IAbpMcpDispatcher
         var result = await _authorizer.AuthorizeAsync(descriptor, context).ConfigureAwait(false);
         if (!result.Succeeded)
         {
-            throw new AbpMcpToolException("FORBIDDEN", result.FailureReason ?? "Not authorized.");
+            throw new AbpMcpToolException(AbpMcpErrorCodes.Forbidden, result.FailureReason ?? "Not authorized.");
         }
     }
 
@@ -244,7 +244,7 @@ internal sealed class AbpMcpDispatcher : IAbpMcpDispatcher
                 {
                     // The path is relative to the agent's own argument, so it is safe and actionable to echo.
                     throw new AbpMcpToolException(
-                        "VALIDATION_ERROR",
+                        AbpMcpErrorCodes.ValidationError,
                         $"Parameter '{parameter.Name}' does not match its schema (at '{jex.Path ?? "$"}').",
                         jex);
                 }
@@ -260,7 +260,7 @@ internal sealed class AbpMcpDispatcher : IAbpMcpDispatcher
 
             // Required parameter missing: surface a clear validation error to the agent.
             throw new AbpMcpToolException(
-                "VALIDATION_ERROR",
+                AbpMcpErrorCodes.ValidationError,
                 $"Missing required parameter '{parameter.Name}'.");
         }
 

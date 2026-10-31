@@ -61,28 +61,28 @@ internal static class AbpMcpExceptionMapper
         {
             case AbpValidationException ve:
                 logger.LogInformation(ex, "Tool {Tool} rejected invalid input", descriptor.Name);
-                return new AbpMcpToolException("VALIDATION_ERROR", DescribeValidationErrors(ve), ve);
+                return new AbpMcpToolException(AbpMcpErrorCodes.ValidationError, DescribeValidationErrors(ve), ve);
 
             case AbpAuthorizationException ae:
                 logger.LogWarning(ex, "Tool {Tool} refused unauthorized caller", descriptor.Name);
-                return new AbpMcpToolException("FORBIDDEN", DescribeAuthorizationFailure(ae), ae);
+                return new AbpMcpToolException(AbpMcpErrorCodes.Forbidden, DescribeAuthorizationFailure(ae), ae);
 
             case EntityNotFoundException nfe:
                 logger.LogInformation(ex, "Tool {Tool} did not find the requested entity", descriptor.Name);
-                return new AbpMcpToolException("NOT_FOUND", DescribeNotFound(nfe), nfe);
+                return new AbpMcpToolException(AbpMcpErrorCodes.NotFound, DescribeNotFound(nfe), nfe);
 
             case BusinessException be:
                 // UserFriendlyException inherits BusinessException in ABP, so this branch handles both.
                 logger.LogInformation(ex, "Tool {Tool} raised business exception {Code}", descriptor.Name, be.Code);
-                return new AbpMcpToolException(be.Code ?? "BUSINESS_ERROR", be.Message ?? string.Empty, be);
+                return new AbpMcpToolException(be.Code ?? AbpMcpErrorCodes.BusinessError, be.Message ?? string.Empty, be);
 
             case OperationCanceledException oce:
                 logger.LogDebug(ex, "Tool {Tool} cancelled", descriptor.Name);
-                return new AbpMcpToolException("CANCELLED", "Operation cancelled.", oce);
+                return new AbpMcpToolException(AbpMcpErrorCodes.Cancelled, "Operation cancelled.", oce);
 
             default:
                 logger.LogError(ex, "Tool {Tool} threw unhandled exception", descriptor.Name);
-                return new AbpMcpToolException("INTERNAL", "An internal error occurred.", ex);
+                return new AbpMcpToolException(AbpMcpErrorCodes.Internal, "An internal error occurred.", ex);
         }
     }
 }
