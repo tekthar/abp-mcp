@@ -1,6 +1,9 @@
 using System.Reflection;
 using AbpMcp.Attributes;
+using AbpMcp.Authorization;
 using AbpMcp.Metadata;
+using AbpMcp.Registration;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.DependencyInjection;
 using Volo.Abp.Http.Modeling;
 
@@ -73,6 +76,31 @@ internal static class AbpMcpExposureExplainer
                         included,
                         reason,
                     });
+                }
+            }
+        }
+
+        return rows;
+    }
+
+    /// <summary>
+    /// Every tool that requires a permission or policy this host does not define, with that name. The authorizer
+    /// refuses such a tool to every caller, so it never appears in <c>tools/list</c>; this says why.
+    /// </summary>
+    public static async Task<List<object>> FindUndefinedPermissionsAsync(IServiceProvider services)
+    {
+        var registry = services.GetRequiredService<IDynamicMcpToolRegistry>();
+        var policies = services.GetRequiredService<IAuthorizationPolicyProvider>();
+        registry.Initialize();
+
+        var rows = new List<object>();
+        foreach (var tool in registry.Tools)
+        {
+            foreach (var name in AbpMcpToolAuthorizer.PolicyNames(tool))
+            {
+                if (await policies.GetPolicyAsync(name).ConfigureAwait(false) is null)
+                {
+                    rows.Add(new { tool = tool.Name, permission = name });
                 }
             }
         }

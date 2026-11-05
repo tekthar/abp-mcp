@@ -46,6 +46,7 @@ public static class AbpMcpBuilderExtensions
         services.TryAddSingleton<IToolDescriptorBuilder, ToolDescriptorBuilder>();
         services.TryAddSingleton<IDynamicMcpToolRegistry, DynamicMcpToolRegistry>();
         services.TryAddTransient<IAbpMcpToolAuthorizer, AbpMcpToolAuthorizer>();
+        services.TryAddSingleton<UndefinedPermissionLog>();
         services.TryAddScoped<IAbpMcpDispatcher, AbpMcpDispatcher>();
         services.TryAddSingleton(TimeProvider.System);
         services.TryAddSingleton<IDisabledToolsProvider, DisabledToolsProvider>();
