@@ -80,9 +80,8 @@ public static class AbpMcpBuilderExtensions
 
         // Microsoft MCP SDK registration. The caller still must have ASP.NET Core wired up.
         // Stateful sessions are pinned explicitly: SDK 2.x defaults to stateless (MCP 2026-07-28,
-        // SEP-2567), which has no session to push notifications/tools/list_changed over, so the
-        // DisabledTools kill switch and IAbpMcpToolListChangedNotifier could no longer tell
-        // connected agents to re-read the tool list.
+        // SEP-2567), which has no session to push notifications/tools/list_changed over, so
+        // IAbpMcpToolListChangedNotifier could no longer tell connected agents to re-read the tool list.
         services.AddMcpServer().WithHttpTransport(transport => transport.SessionMode = HttpServerSessionMode.Stateful);
 
         // Bridge our descriptors to the SDK's tool handlers. This is the only place

@@ -6,13 +6,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
-### Fixed
-
-- **Hosts on ABP 10.3 or later failed at boot with `MissingMethodException`.** ABP 10.3 replaced `IApiDescriptionModelProvider.CreateApiModel` with `CreateApiModelAsync`. abp-mcp compiles against its ABP floor (10.1), so `AbpMcpModule.OnApplicationInitialization` (via `ApiDefinitionReader.Read`) and `/mcp/_explain` called a method newer ABPs no longer have. Both now call whichever of the two methods the host's ABP has, preferring the async one. ABP 10.1 stays the floor.
-
 ### Added
 
 - CI job **Test with the host on the newest ABP 10.x**: builds abp-mcp against the floor as before and runs the sample and the integration tests on the newest ABP 10.x (`-p:AbpHostVersion=10.*`; the property defaults to `AbpVersion`), so an ABP change like the one above fails CI instead of a consumer's boot.
+
+### Changed
+
+- The Library sample documents its `Loan` and `Member` services, so all 16 sample tools now advertise real descriptions (with the business errors each can return) instead of the `Invoke X.Y` fallback.
+- README rewritten around what abp-mcp does for you: a hero example, a real recorded MCP session (`docs/assets/demo.gif`), what the agent sees, a comparison with generic OpenAPI → MCP bridges, and how it is tested.
+
+### Fixed
+
+- **Hosts on ABP 10.3 or later failed at boot with `MissingMethodException`.** ABP 10.3 replaced `IApiDescriptionModelProvider.CreateApiModel` with `CreateApiModelAsync`. abp-mcp compiles against its ABP floor (10.1), so `AbpMcpModule.OnApplicationInitialization` (via `ApiDefinitionReader.Read`) and `/mcp/_explain` called a method newer ABPs no longer have. Both now call whichever of the two methods the host's ABP has, preferring the async one. ABP 10.1 stays the floor.
 
 ## [0.4.0] — 2026-10-31
 
@@ -32,7 +37,7 @@ The first release without a pre-release tag: `dotnet add package AbpMcp` now ins
 
 ### Changed
 
-- **MCP SDK `ModelContextProtocol.AspNetCore` 1.2.0 → 2.3.0, with the transport pinned to stateful sessions.** SDK 2.x defaults to stateless mode (MCP protocol revision `2026-07-28`, SEP-2567), which has no session to push `notifications/tools/list_changed` over; the `DisabledTools` kill switch and `IAbpMcpToolListChangedNotifier` would have stopped reaching connected agents. `AddAbpMcp` now sets `HttpServerTransportOptions.SessionMode = Stateful`, so behavior is unchanged from 0.3.0-alpha. A host that wants stateless mode (and gives up `list_changed`) can override it with `services.Configure<HttpServerTransportOptions>(o => o.SessionMode = HttpServerSessionMode.Stateless)`.
+- **MCP SDK `ModelContextProtocol.AspNetCore` 1.2.0 → 2.3.0, with the transport pinned to stateful sessions.** SDK 2.x defaults to stateless mode (MCP protocol revision `2026-07-28`, SEP-2567), which has no session to push `notifications/tools/list_changed` over; `IAbpMcpToolListChangedNotifier` (which a host calls after changing the tool set, for example after disabling a tool) would have stopped reaching connected agents. `AddAbpMcp` now sets `HttpServerTransportOptions.SessionMode = Stateful`, so behavior is unchanged from 0.3.0-alpha. A host that wants stateless mode (and gives up `list_changed`) can override it with `services.Configure<HttpServerTransportOptions>(o => o.SessionMode = HttpServerSessionMode.Stateless)`.
 
 ### Fixed
 
