@@ -1,36 +1,51 @@
-using System.Runtime.CompilerServices;
+using System.Collections.Concurrent;
 using ModelContextProtocol.Server;
 
 namespace AbpMcp.Notifications;
 
-// Note: the SDK session type is the McpServer class (RequestContext.Server), not an interface.
-
 /// <summary>
-/// Tracks the live MCP server sessions so server-initiated notifications (e.g.
-/// <c>notifications/tools/list_changed</c>) can be broadcast to every connected agent.
+/// Tracks the MCP sessions that can currently receive server-initiated notifications (e.g.
+/// <c>notifications/tools/list_changed</c>), so they can be broadcast to every connected agent.
 /// </summary>
 /// <remarks>
-/// The low-level handler path does not expose a session list, so the abp-mcp handler wiring
-/// records each session's <see cref="McpServer"/> the first time it handles a request for it.
-/// Sessions are held weakly: once the SDK ends a session (client DELETE, idle timeout) and drops it,
-/// it is collected and disappears from <see cref="Sessions"/> with no disconnect hook needed. Holding
-/// them strongly would keep every session ever opened alive for the life of the process. A session
-/// that is ended but not yet collected fails its send and is removed by the notifier. Server-initiated
-/// notifications require a non-stateless transport; with the stateless transport each request is its
-/// own session and there is nothing to notify later.
+/// <para>
+/// Over streamable HTTP a server can push to a client only through the client's standalone GET stream; with no
+/// stream open the SDK drops the notification. So the registry tracks exactly those streams:
+/// <see cref="McpNotificationStreamTracker"/> adds a session when the SDK accepts its GET stream and removes it
+/// when that request ends, however it ends (client disconnect, <c>DELETE</c>, idle timeout, shutdown).
+/// </para>
+/// <para>
+/// Each entry is the SDK's session object, held strongly but never longer than the request that keeps the
+/// session open. Earlier versions held the per-request server wrapper weakly, which let a garbage collection
+/// drop a live session (#83), and before that held it strongly forever (#57).
+/// </para>
 /// </remarks>
 internal sealed class McpSessionRegistry
 {
-    private static readonly object Tracked = new();
+    private readonly ConcurrentDictionary<object, McpServer> _streams = new();
 
-    private readonly ConditionalWeakTable<McpServer, object> _sessions = new();
+    /// <summary>
+    /// Record an open notification stream for <paramref name="server"/>. Dispose the returned handle when the
+    /// stream closes.
+    /// </summary>
+    public IDisposable Add(McpServer server)
+    {
+        ArgumentNullException.ThrowIfNull(server);
 
-    /// <summary>Record a session. Idempotent.</summary>
-    public void Track(McpServer server) => _sessions.TryAdd(server, Tracked);
+        var key = new object();
+        _streams[key] = server;
+        return new Registration(_streams, key);
+    }
 
-    /// <summary>Forget a session (e.g. after a failed send).</summary>
-    public void Remove(McpServer server) => _sessions.Remove(server);
+    /// <summary>
+    /// A snapshot of the sessions with an open notification stream, each listed once even if a client
+    /// resumed its stream alongside the original.
+    /// </summary>
+    public IReadOnlyCollection<McpServer> Sessions =>
+        _streams.Values.Distinct(ReferenceEqualityComparer.Instance).Cast<McpServer>().ToArray();
 
-    /// <summary>A snapshot of the sessions that are still alive.</summary>
-    public IReadOnlyCollection<McpServer> Sessions => _sessions.Select(entry => entry.Key).ToArray();
+    private sealed class Registration(ConcurrentDictionary<object, McpServer> streams, object key) : IDisposable
+    {
+        public void Dispose() => streams.TryRemove(key, out _);
+    }
 }

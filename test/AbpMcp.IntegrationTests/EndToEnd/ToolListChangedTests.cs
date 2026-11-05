@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using AbpMcp.Notifications;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
@@ -43,12 +44,49 @@ public sealed class ToolListChangedTests : IAsyncLifetime
                 return ValueTask.CompletedTask;
             });
 
-        // A request registers the session with abp-mcp's list_changed session registry.
         await client.ListToolsAsync();
         await stream.Opened.WaitAsync(TimeSpan.FromSeconds(10));
         await _host.Services.GetRequiredService<IAbpMcpToolListChangedNotifier>().NotifyToolListChangedAsync();
 
         await received.Task.WaitAsync(TimeSpan.FromSeconds(10));
+    }
+
+    /// <summary>
+    /// Regression for #83: the session registry held sessions weakly, through the SDK's per-request server
+    /// wrapper, so a garbage collection between the agent's last request and the broadcast dropped a live
+    /// session and the notification never left the server. Under a full test run that GC happened often enough
+    /// to fail the test above at random; this forces it.
+    /// </summary>
+    [Fact]
+    public async Task Notifier_ReachesALiveSession_AfterAGarbageCollection()
+    {
+        var stream = new NotificationStreamProbe(TimeSpan.Zero);
+        await using var client = await _host.ConnectAsync(stream);
+
+        var received = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var registration = client.RegisterNotificationHandler(
+            NotificationMethods.ToolListChangedNotification,
+            (_, _) =>
+            {
+                received.TrySetResult();
+                return ValueTask.CompletedTask;
+            });
+
+        await client.ListToolsAsync();
+        await stream.Opened.WaitAsync(TimeSpan.FromSeconds(10));
+        CollectGarbage();
+        await _host.Services.GetRequiredService<IAbpMcpToolListChangedNotifier>().NotifyToolListChangedAsync();
+
+        await received.Task.WaitAsync(TimeSpan.FromSeconds(10));
+    }
+
+    /// <summary>A collection in a frame of its own, so no temporary of the caller's survives it by accident.</summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void CollectGarbage()
+    {
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
     }
 
     /// <summary>

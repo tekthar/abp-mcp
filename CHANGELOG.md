@@ -18,6 +18,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 ### Fixed
 
 - **Hosts on ABP 10.3 or later failed at boot with `MissingMethodException`.** ABP 10.3 replaced `IApiDescriptionModelProvider.CreateApiModel` with `CreateApiModelAsync`. abp-mcp compiles against its ABP floor (10.1), so `AbpMcpModule.OnApplicationInitialization` (via `ApiDefinitionReader.Read`) and `/mcp/_explain` called a method newer ABPs no longer have. Both now call whichever of the two methods the host's ABP has, preferring the async one. ABP 10.1 stays the floor.
+- **`notifications/tools/list_changed` could miss connected agents** ([#83](https://github.com/tekthar/abp-mcp/issues/83)). The session registry held the SDK's per-request server wrapper weakly, so a garbage collection between an agent's last request and the broadcast dropped a live session. The registry now tracks each session for exactly as long as its notification stream (the client's GET stream, the only channel a server can push on) is open. A session is added when the SDK accepts the stream and removed when that request ends (disconnect, `DELETE`, idle timeout, shutdown), so nothing depends on the GC and ended sessions are still released. Agents that never called `tools/list` but have a stream open are notified too.
 
 ## [0.4.0] — 2026-10-31
 
