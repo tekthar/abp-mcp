@@ -6,7 +6,7 @@ using Volo.Abp.Http.Modeling;
 namespace AbpMcp.Tests;
 
 /// <summary>
-/// abp-mcp compiles against ABP 10.1, where the api-definition call is <c>CreateApiModel</c>; ABP 10.4
+/// abp-mcp compiles against ABP 10.1, where the api-definition call is <c>CreateApiModel</c>; ABP 10.3
 /// renamed it <c>CreateApiModelAsync</c>, and a host on the newer ABP failed at boot with
 /// MissingMethodException. The call is bound to whichever method the host's ABP has. (The integration
 /// tests run on the newest ABP in CI, see AbpHostVersion in Directory.Build.props.)
@@ -16,7 +16,7 @@ public class ApiDescriptionModelsTests
     private static readonly ApplicationApiDescriptionModelRequestDto Input = new() { IncludeTypes = true };
 
     [Fact]
-    public async Task Bind_UsesCreateApiModelAsync_TheAbp104Shape()
+    public async Task Bind_UsesCreateApiModelAsync_TheAbp103Shape()
     {
         var model = ApplicationApiDescriptionModel.Create();
         var provider = new AsyncOnlyProvider(model);

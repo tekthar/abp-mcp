@@ -7,9 +7,9 @@ namespace AbpMcp.Metadata;
 /// Calls ABP's <see cref="IApiDescriptionModelProvider"/> on whichever ABP the host runs.
 /// </summary>
 /// <remarks>
-/// ABP 10.4 replaced <c>CreateApiModel(ApplicationApiDescriptionModelRequestDto)</c> with
+/// ABP 10.3 replaced <c>CreateApiModel(ApplicationApiDescriptionModelRequestDto)</c> with
 /// <c>CreateApiModelAsync(ApplicationApiDescriptionModelRequestDto)</c>. abp-mcp compiles against its ABP
-/// floor (10.1), so a direct call binds to the old method, and a host on ABP 10.4 or later failed at boot
+/// floor (10.1), so a direct call binds to the old method, and a host on ABP 10.3 or later failed at boot
 /// with <see cref="MissingMethodException"/>. The method is therefore looked up on the interface the host
 /// actually loaded, once, preferring the async one.
 /// </remarks>

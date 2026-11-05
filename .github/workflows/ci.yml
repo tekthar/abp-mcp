@@ -50,8 +50,8 @@ jobs:
           path: test-results/**/*.trx
           if-no-files-found: warn
 
-  # abp-mcp is compiled against its ABP floor (AbpVersion) but hosts run newer ABPs. ABP 10.4 renamed
-  # IApiDescriptionModelProvider.CreateApiModel to CreateApiModelAsync, and every host on 10.4+ failed
+  # abp-mcp is compiled against its ABP floor (AbpVersion) but hosts run newer ABPs. ABP 10.3 renamed
+  # IApiDescriptionModelProvider.CreateApiModel to CreateApiModelAsync, and every host on 10.3+ failed
   # at boot with MissingMethodException while the job above stayed green. This job builds abp-mcp the
   # same way and runs the sample and the integration tests on the newest ABP 10.x.
   host-on-newest-abp:
