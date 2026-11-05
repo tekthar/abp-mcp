@@ -6,7 +6,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
-Nothing yet. The next changes after `v0.4.0` ship here.
+### Fixed
+
+- **Hosts on ABP 10.4 or later failed at boot with `MissingMethodException`.** ABP 10.4 replaced `IApiDescriptionModelProvider.CreateApiModel` with `CreateApiModelAsync`. abp-mcp compiles against its ABP floor (10.1), so `AbpMcpModule.OnApplicationInitialization` (via `ApiDefinitionReader.Read`) and `/mcp/_explain` called a method newer ABPs no longer have. Both now call whichever of the two methods the host's ABP has, preferring the async one. ABP 10.1 stays the floor.
+
+### Added
+
+- CI job **Test with the host on the newest ABP 10.x**: builds abp-mcp against the floor as before and runs the sample and the integration tests on the newest ABP 10.x (`-p:AbpHostVersion=10.*`; the property defaults to `AbpVersion`), so an ABP change like the one above fails CI instead of a consumer's boot.
 
 ## [0.4.0] — 2026-10-31
 

@@ -50,6 +50,39 @@ jobs:
           path: test-results/**/*.trx
           if-no-files-found: warn
 
+  # abp-mcp is compiled against its ABP floor (AbpVersion) but hosts run newer ABPs. ABP 10.4 renamed
+  # IApiDescriptionModelProvider.CreateApiModel to CreateApiModelAsync, and every host on 10.4+ failed
+  # at boot with MissingMethodException while the job above stayed green. This job builds abp-mcp the
+  # same way and runs the sample and the integration tests on the newest ABP 10.x.
+  host-on-newest-abp:
+    name: Test with the host on the newest ABP 10.x
+    runs-on: ubuntu-latest
+    env:
+      ABP_HOST_VERSION: "10.*"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore
+        run: dotnet restore -p:AbpHostVersion="${ABP_HOST_VERSION}"
+
+      - name: Build (Release, warnings-as-errors)
+        run: dotnet build --no-restore --configuration Release -p:AbpHostVersion="${ABP_HOST_VERSION}"
+
+      - name: Test
+        run: |
+          dotnet test \
+            --no-build \
+            --configuration Release \
+            -p:AbpHostVersion="${ABP_HOST_VERSION}" \
+            --logger "console;verbosity=normal"
+
   pack-smoke:
     name: Pack smoke (NuGet)
     runs-on: ubuntu-latest
