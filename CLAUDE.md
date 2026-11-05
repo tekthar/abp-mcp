@@ -29,7 +29,7 @@ Every piece has exactly one job; none of them owns more than ~200 LOC.
 2. **Tool exposure is opt-in.** A service without `[McpTool]` is invisible. Do not add "expose everything" modes without an explicit design change.
 3. **Permission check before invoke. Permission filter before list.** Both paths. Test both.
 4. **No catch-all exception handlers in the dispatcher.** Use the mapping table in `AbpMcpExceptionMapper`. Every ABP exception type has a specific translation. Unknown exceptions become `INTERNAL` with no stack trace leaked.
-5. **In-process only for v0.1 and v1.0.** No sidecar processes. No stdio transport. Streamable HTTP only.
+5. **In-process only for v0.1 and v1.0.** No sidecar processes. No stdio transport. Streamable HTTP only. This is about the server package: `bridge/` is an optional client-side companion (npm, TypeScript) that runs on the user's machine and talks to `/mcp` over HTTP. See `docs/bridge.md`.
 6. **ABP-idiomatic public surface.** Attribute names mirror `[RemoteService]` ergonomics (`[McpTool]`/`[McpIgnore]`). Options collection mirrors `ConventionalControllers.Create(assembly, ...)`. `Configure<AbpMcpOptions>` works in `PreConfigureServices`. If a new option breaks this convention, find another way.
 7. **`/mcp/_discover` and `/mcp/_explain` endpoints stay shipped.** They are the diff between "auto-generator that frustrates devs" and "auto-generator that delights them." Do not move them behind a feature flag, do not lazy-load them, do not skimp on the explain reasons.
 
@@ -45,6 +45,16 @@ Test tiers:
 - **Unit** (`test/AbpMcp.Tests`): xUnit, FluentAssertions, NSubstitute. Pure logic: Reader parses JSON, Builder emits schemas, naming conventions, enum maps.
 - **Integration** (`test/AbpMcp.IntegrationTests`): real ABP container (`AbpIntegratedTest`), invoking through `IAbpMcpDispatcher` and asserting side effects (DB rows, audit logs).
 - **E2E** (`test/AbpMcp.IntegrationTests/EndToEnd`): boots the Library sample on an in-memory `TestServer` (`SampleHost`) and drives `/mcp` with the SDK's own `McpClient`. Anything that crosses the SDK seam (`tools/list` shape, `structuredContent`, transport/origin rules, session lifetime) needs a test here — descriptor-level tests cannot see it. Test classes that boot the sample join `[Collection(SampleHostCollection.Name)]`.
+
+### Bridge (`bridge/`)
+
+```bash
+cd bridge && npm ci
+npm run lint && npm run typecheck && npm test
+ABP_MCP_E2E_URL=http://localhost:5000/mcp npm run test:e2e   # with the sample running
+```
+
+TypeScript, Node 22+, `node:test`. The same regression rule applies. The bridge never re-sends a `tools/call` that may have reached the host, and never logs a secret; tests in `test/integration` hold both.
 
 ## Code conventions
 
