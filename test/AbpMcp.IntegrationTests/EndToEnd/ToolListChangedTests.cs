@@ -7,8 +7,8 @@ namespace AbpMcp.IntegrationTests.EndToEnd;
 
 /// <summary>
 /// notifications/tools/list_changed must reach a connected agent. Server-initiated notifications need a
-/// stateful session, so this pins the transport mode: MCP SDK 2.x defaults to stateless, under which the
-/// DisabledTools kill switch and <see cref="IAbpMcpToolListChangedNotifier"/> would silently stop working.
+/// stateful session, so this pins the transport mode: MCP SDK 2.x defaults to stateless, under which
+/// <see cref="IAbpMcpToolListChangedNotifier"/> would silently stop reaching connected agents.
 /// </summary>
 [Collection(SampleHostCollection.Name)]
 public sealed class ToolListChangedTests : IAsyncLifetime
