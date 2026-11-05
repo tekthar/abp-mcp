@@ -80,14 +80,13 @@ public sealed class ToolListChangedTests : IAsyncLifetime
         await received.Task.WaitAsync(TimeSpan.FromSeconds(10));
     }
 
-    /// <summary>A collection in a frame of its own, so no temporary of the caller's survives it by accident.</summary>
+    /// <summary>
+    /// Forcing a collection is the point of this regression test: the bug only shows when a GC runs between the
+    /// agent's last request and the broadcast. One blocking full collection is enough, since nothing here depends on
+    /// a finalizer. It runs in a frame of its own, so no temporary of the caller's survives it by accident.
+    /// </summary>
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static void CollectGarbage()
-    {
-        GC.Collect();
-        GC.WaitForPendingFinalizers();
-        GC.Collect();
-    }
+    private static void CollectGarbage() => GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true);
 
     /// <summary>
     /// Signals once the server has accepted the client's standalone GET stream, the channel server-initiated

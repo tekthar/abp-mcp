@@ -96,13 +96,8 @@ internal static class AbpMcpExposureExplainer
         var rows = new List<object>();
         foreach (var tool in registry.Tools)
         {
-            foreach (var name in AbpMcpToolAuthorizer.PolicyNames(tool))
-            {
-                if (await policies.GetPolicyAsync(name).ConfigureAwait(false) is null)
-                {
-                    rows.Add(new { tool = tool.Name, permission = name });
-                }
-            }
+            var undefined = await AbpMcpToolAuthorizer.FindUndefinedPolicyNamesAsync(policies, tool).ConfigureAwait(false);
+            rows.AddRange(undefined.Select(name => new { tool = tool.Name, permission = name }));
         }
 
         return rows;

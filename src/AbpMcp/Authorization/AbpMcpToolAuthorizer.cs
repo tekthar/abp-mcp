@@ -46,13 +46,11 @@ internal sealed class AbpMcpToolAuthorizer : IAbpMcpToolAuthorizer
 
         // ASP.NET Core throws "No policy found" for a name nothing defines, which failed tools/list and _discover
         // as a whole. Refuse just this tool instead. Fail closed: an undefined name never grants anything.
-        foreach (var name in PolicyNames(descriptor))
+        var undefined = await FindUndefinedPolicyNamesAsync(_policyProvider, descriptor).ConfigureAwait(false);
+        if (undefined.Count > 0)
         {
-            if (await _policyProvider.GetPolicyAsync(name).ConfigureAwait(false) is null)
-            {
-                _undefinedPermissions.Report(descriptor.Name, name);
-                return AbpMcpToolAuthorizationResult.Fail($"Missing permission: {name} (it is not defined on this server).");
-            }
+            _undefinedPermissions.Report(descriptor.Name, undefined[0]);
+            return AbpMcpToolAuthorizationResult.Fail($"Missing permission: {undefined[0]} (it is not defined on this server).");
         }
 
         foreach (var permission in descriptor.RequiredPermissions)
@@ -87,12 +85,30 @@ internal sealed class AbpMcpToolAuthorizer : IAbpMcpToolAuthorizer
     }
 
     /// <summary>
-    /// Every permission and policy name <paramref name="descriptor"/> requires. Policies normally appear among the
-    /// permissions too, but an add-in can attach <c>[Authorize]</c> data on its own.
+    /// The permission and policy names <paramref name="descriptor"/> requires that <paramref name="policyProvider"/>
+    /// does not define, in declaration order. Policies normally appear among the permissions too, but an add-in can
+    /// attach <c>[Authorize]</c> data on its own, so both are checked.
     /// </summary>
-    internal static IEnumerable<string> PolicyNames(ToolDescriptor descriptor) => descriptor.RequiredPermissions
-        .Concat(descriptor.AuthorizeData.Select(data => data.Policy).OfType<string>().Where(policy => policy.Length > 0))
-        .Distinct(StringComparer.Ordinal);
+    internal static async Task<IReadOnlyList<string>> FindUndefinedPolicyNamesAsync(
+        IAuthorizationPolicyProvider policyProvider,
+        ToolDescriptor descriptor)
+    {
+        var names = descriptor.RequiredPermissions
+            .Concat(descriptor.AuthorizeData.Select(data => data.Policy).OfType<string>().Where(policy => policy.Length > 0))
+            .Distinct(StringComparer.Ordinal);
+
+        var undefined = new List<string>();
+        foreach (var name in names)
+        {
+            var policy = await policyProvider.GetPolicyAsync(name).ConfigureAwait(false);
+            if (policy is null)
+            {
+                undefined.Add(name);
+            }
+        }
+
+        return undefined;
+    }
 
     /// <summary>
     /// Policies that name authentication schemes are evaluated against the principals those schemes
