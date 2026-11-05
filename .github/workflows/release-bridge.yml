@@ -1,0 +1,79 @@
+name: Release bridge
+
+# Triggered by a tag of the form bridge-vX.Y.Z. (The NuGet release workflow takes v* tags; the two never
+# collide.) Tests, publishes @tekthar/abp-mcp-bridge to npm with provenance, and creates a GitHub Release
+# with the Claude Desktop extension (.mcpb) attached.
+on:
+  push:
+    tags:
+      - "bridge-v*"
+
+permissions:
+  contents: write   # gh release create
+  id-token: write   # npm provenance and trusted publishing (OIDC)
+
+jobs:
+  publish:
+    name: Test, publish to npm, release the .mcpb
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: bridge
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+          cache: npm
+          cache-dependency-path: bridge/package-lock.json
+
+      - name: Check the tag matches package.json
+        id: version
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          if [ "${GITHUB_REF_NAME}" != "bridge-v${version}" ]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} does not match package.json version ${version} (expected bridge-v${version})."
+            exit 1
+          fi
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+
+      - name: Install, lint, typecheck, test
+        run: |
+          npm ci
+          npm run lint
+          npm run typecheck
+          npm test
+          node scripts/check-pack.mjs
+
+      # Trusted publishing needs npm 11.5.1 or later.
+      - name: Upgrade npm
+        run: npm install -g npm@11
+
+      # With a trusted publisher configured on npmjs.com for this workflow, npm authenticates through OIDC.
+      # For the very first publish (before the package exists to configure one), set the NPM_TOKEN secret.
+      - name: Publish to npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --provenance --access public
+
+      - name: Build the Claude Desktop extension (.mcpb)
+        run: npm run pack:mcpb
+
+      - name: Create the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          awk -v version="$VERSION" '
+            $0 ~ "^## \\[" version "\\]" { found = 1; next }
+            found && /^## \[/ { exit }
+            found { print }
+          ' CHANGELOG.md > release-notes.md
+          gh release create "${GITHUB_REF_NAME}" "abp-mcp-bridge-${VERSION}.mcpb" \
+            --title "abp-mcp-bridge ${VERSION}" \
+            --notes-file release-notes.md
