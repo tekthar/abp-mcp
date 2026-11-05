@@ -56,7 +56,20 @@ public sealed class SampleHost : IAsyncDisposable
     }
 
     /// <summary>Connect an MCP client to <c>/mcp</c> over the in-memory server (streamable HTTP).</summary>
-    public Task<McpClient> ConnectAsync()
+    public Task<McpClient> ConnectAsync() => Connect(Server.CreateClient());
+
+    /// <summary>
+    /// Connect an MCP client whose HTTP requests pass through <paramref name="handler"/> first, so a test can
+    /// observe or delay the client's traffic.
+    /// </summary>
+    public Task<McpClient> ConnectAsync(DelegatingHandler handler)
+    {
+        ArgumentNullException.ThrowIfNull(handler);
+        handler.InnerHandler = Server.CreateHandler();
+        return Connect(new HttpClient(handler) { BaseAddress = Server.BaseAddress });
+    }
+
+    private Task<McpClient> Connect(HttpClient http)
     {
         var transport = new HttpClientTransport(
             new HttpClientTransportOptions
@@ -64,7 +77,7 @@ public sealed class SampleHost : IAsyncDisposable
                 Endpoint = new Uri(Server.BaseAddress, "/mcp"),
                 TransportMode = HttpTransportMode.StreamableHttp,
             },
-            Server.CreateClient(),
+            http,
             NullLoggerFactory.Instance,
             ownsHttpClient: true);
 

@@ -6,10 +6,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Added
+
+- CI job **Test with the host on the newest ABP 10.x**: builds abp-mcp against the floor as before and runs the sample and the integration tests on the newest ABP 10.x (`-p:AbpHostVersion=10.*`; the property defaults to `AbpVersion`), so an ABP change like the one above fails CI instead of a consumer's boot.
+
 ### Changed
 
 - The Library sample documents its `Loan` and `Member` services, so all 16 sample tools now advertise real descriptions (with the business errors each can return) instead of the `Invoke X.Y` fallback.
 - README rewritten around what abp-mcp does for you: a hero example, a real recorded MCP session (`docs/assets/demo.gif`), what the agent sees, a comparison with generic OpenAPI → MCP bridges, and how it is tested.
+
+### Fixed
+
+- **Hosts on ABP 10.3 or later failed at boot with `MissingMethodException`.** ABP 10.3 replaced `IApiDescriptionModelProvider.CreateApiModel` with `CreateApiModelAsync`. abp-mcp compiles against its ABP floor (10.1), so `AbpMcpModule.OnApplicationInitialization` (via `ApiDefinitionReader.Read`) and `/mcp/_explain` called a method newer ABPs no longer have. Both now call whichever of the two methods the host's ABP has, preferring the async one. ABP 10.1 stays the floor.
 
 ## [0.4.0] — 2026-10-31
 

@@ -95,7 +95,8 @@ public static class AbpMcpDiagnosticsEndpoints
     {
         var serviceFilter = context.Request.Query["service"].ToString();
         var options = context.RequestServices.GetRequiredService<IOptions<AbpMcpOptions>>().Value;
-        var explanations = AbpMcpExposureExplainer.Explain(context.RequestServices, options, serviceFilter);
+        var explanations = await AbpMcpExposureExplainer.ExplainAsync(context.RequestServices, options, serviceFilter)
+            .ConfigureAwait(false);
 
         var response = new
         {

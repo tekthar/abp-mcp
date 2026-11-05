@@ -21,6 +21,13 @@
     <MsExtVersion>10.0.*</MsExtVersion>
   </PropertyGroup>
 
+  <!-- The ABP the sample and the integration tests run abp-mcp on. abp-mcp itself always compiles
+       against $(AbpVersion); a host may run any newer ABP, so CI also runs the tests with this set to
+       the newest ABP (-p:AbpHostVersion=...) to catch a method the floor has and newer ABPs dropped. -->
+  <PropertyGroup>
+    <AbpHostVersion Condition="'$(AbpHostVersion)' == ''">$(AbpVersion)</AbpHostVersion>
+  </PropertyGroup>
+
   <PropertyGroup Label="Package metadata">
     <Authors>tekthar and abp-mcp contributors</Authors>
     <Company>tekthar</Company>
