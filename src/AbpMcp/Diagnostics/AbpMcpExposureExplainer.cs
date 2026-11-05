@@ -13,13 +13,13 @@ namespace AbpMcp.Diagnostics;
 internal static class AbpMcpExposureExplainer
 {
     /// <summary>One row per service method in scope: whether it is exposed as a tool, and why.</summary>
-    public static List<object> Explain(IServiceProvider services, AbpMcpOptions options, string? serviceFilter)
+    public static async Task<List<object>> ExplainAsync(IServiceProvider services, AbpMcpOptions options, string? serviceFilter)
     {
         var provider = services.GetRequiredService<IApiDescriptionModelProvider>();
-        var model = provider.CreateApiModel(new ApplicationApiDescriptionModelRequestDto
+        var model = await ApiDescriptionModels.CreateAsync(provider, new ApplicationApiDescriptionModelRequestDto
         {
             IncludeTypes = false,
-        });
+        }).ConfigureAwait(false);
 
         // Same scope as ApiDefinitionReader: when assemblies are registered, nothing outside them is a
         // candidate tool, so listing those services would only disclose unrelated parts of the app.

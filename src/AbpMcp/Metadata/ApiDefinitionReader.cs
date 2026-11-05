@@ -28,10 +28,13 @@ internal sealed class ApiDefinitionReader : IApiDefinitionReader
 
     public IReadOnlyList<ToolDescriptor> Read()
     {
-        var model = _provider.CreateApiModel(new ApplicationApiDescriptionModelRequestDto
+        // Read() stays synchronous because IApiDefinitionReader is public. It runs from the registry's
+        // Initialize (at boot) and Refresh; ASP.NET Core has no synchronization context, so blocking
+        // on the task cannot deadlock.
+        var model = ApiDescriptionModels.CreateAsync(_provider, new ApplicationApiDescriptionModelRequestDto
         {
             IncludeTypes = true,
-        });
+        }).GetAwaiter().GetResult();
 
         // ExposedAssemblies acts as a hard filter when registered. Empty = scan everything
         // (matching the v0.1 behaviour the docs already promise).
