@@ -43,6 +43,9 @@ internal sealed class ToolDescriptorBuilder : IToolDescriptorBuilder
             RequiredPermissions = permissions,
             AuthorizeData = authorizeData,
             HttpMethod = action.HttpMethod,
+
+            // The declared listing; the registry applies the host's AbpMcpOptions.ToolListing on top (IToolListingResolver).
+            Listing = expose.Listing,
         };
     }
 

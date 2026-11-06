@@ -90,6 +90,8 @@ const manifest = {
         ABP_MCP_USERNAME: "${user_config.username}",
         ABP_MCP_PASSWORD: "${user_config.password}",
         ABP_MCP_TOOLS_PRESET: "${user_config.tools_preset}",
+        ABP_MCP_GATEWAY: "${user_config.gateway}",
+        ABP_MCP_GATEWAY_PINNED: "${user_config.gateway_pinned}",
       },
     },
   },
@@ -104,6 +106,8 @@ const manifest = {
     username: setting("User name", "For password sign-in."),
     password: setting("Password", "For password sign-in. Kept in your OS keychain by Claude Desktop.", { sensitive: true }),
     tools_preset: setting("Tools", "all or read-only. Empty: read-only for production, all otherwise."),
+    gateway: setting("Tool gateway", "on: list only the pinned tools, and let Claude search for the rest and run short scripts that call several tools. For apps with many tools.", { default: "off" }),
+    gateway_pinned: setting("Pinned tools", "With the gateway on: tools to list anyway, comma-separated, * allowed, e.g. jira_get_issue, jira_search*."),
     profile: setting("Profile", "Advanced: a profile name from profiles.json. Its settings win over the ones above.", { default: "claude-desktop" }),
   },
 };

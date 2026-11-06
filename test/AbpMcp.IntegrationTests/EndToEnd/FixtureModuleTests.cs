@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using AbpMcp.Fixtures.Application;
 using AbpMcp.Fixtures.HttpApi;
+using AbpMcp.Gateway;
 using FluentAssertions;
 
 namespace AbpMcp.IntegrationTests.EndToEnd;
@@ -44,6 +45,25 @@ public sealed class FixtureModuleTests : IAsyncLifetime
         var result = await client.CallToolAsync("Quote_GetOfTheDay");
         result.IsError.Should().NotBe(true);
         result.StructuredContent!.Value.GetProperty("author").GetString().Should().Be("George R. R. Martin");
+    }
+
+    // #119: [McpTool(Listing = McpToolListing.OnDemand)] in an assembly that references AbpMcp.Abstractions only.
+    [Fact]
+    public async Task OnDemandAttribute_KeepsTheToolOutOfToolsList_AndTheGatewayReachesIt()
+    {
+        await using var client = await _host.ConnectAsync();
+
+        var names = (await client.ListToolsAsync()).Select(t => t.Name).ToList();
+        var search = await OnDemandToolsTests.GatewayAsync(client, AbpMcpGatewayToolNames.Search, new { query = "proverb" });
+        var call = await client.CallToolAsync(AbpMcpGatewayToolNames.Call, new Dictionary<string, object?> { ["name"] = "Proverb_GetRandom" });
+        var row = Decisions(await ExplainAsync("?service=Proverb")).Single();
+
+        names.Should().NotContain("Proverb_GetRandom").And.Contain(AbpMcpGatewayToolNames.All);
+        search["tools"]![0]!["name"]!.GetValue<string>().Should().Be("Proverb_GetRandom");
+        call.IsError.Should().NotBe(true, OnDemandToolsTests.Text(call));
+        call.StructuredContent!.Value.GetProperty("text").GetString().Should().Be("Still waters run deep.");
+        row["listing"]!.GetValue<string>().Should().Be("on_demand");
+        row["listing_reason"]!.GetValue<string>().Should().Be("On demand: [McpTool(Listing = McpToolListing.OnDemand)] on class ProverbAppService.");
     }
 
     [Fact]

@@ -1,4 +1,5 @@
 using System.Reflection;
+using AbpMcp.Listing;
 
 namespace AbpMcp;
 
@@ -115,6 +116,24 @@ public sealed class AbpMcpOptions
     /// <see cref="TimeSpan.Zero"/> reads the setting on every request.
     /// </summary>
     public TimeSpan DisabledToolsSettingCacheDuration { get; set; } = TimeSpan.FromSeconds(10);
+
+    /// <summary>
+    /// Which tools are left out of <c>tools/list</c> (on demand) or pinned in it, by tool-name pattern, without
+    /// touching the services. On-demand tools are found through the <c>mcp_search_tools</c> gateway tool and called
+    /// through <c>mcp_call_tool</c>/<c>mcp_call_tools</c>, which <c>tools/list</c> advertises whenever at least one
+    /// tool is on demand. Precedence, highest first: a <see cref="ToolListingOptions.Listed"/> pin, an
+    /// <see cref="ToolListingOptions.OnDemand"/> pattern, <c>[McpTool(Listing = ...)]</c>, the default (listed).
+    /// </summary>
+    /// <example>
+    /// <code>
+    /// Configure&lt;AbpMcpOptions&gt;(o =>
+    /// {
+    ///     o.ToolListing.OnDemand("Jira*", "*_Delete");
+    ///     o.ToolListing.Listed("Jira_GetIssue");   // pins win over OnDemand
+    /// });
+    /// </code>
+    /// </example>
+    public ToolListingOptions ToolListing { get; } = new();
 
     /// <summary>
     /// Assemblies to scan for <c>[McpTool]</c>-tagged services. Mirrors ABP's

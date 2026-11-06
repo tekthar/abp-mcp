@@ -1,12 +1,11 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using AbpMcp.Authorization;
+using AbpMcp.Attributes;
 using AbpMcp.Dispatch;
+using AbpMcp.Gateway;
 using AbpMcp.Metadata;
-using AbpMcp.Settings;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
@@ -14,9 +13,9 @@ using ModelContextProtocol.Server;
 namespace AbpMcp.Registration;
 
 /// <summary>
-/// Bridges <see cref="IDynamicMcpToolRegistry"/> descriptors and <see cref="IAbpMcpDispatcher"/>
-/// invocations to Microsoft's <see cref="McpServerHandlers"/> via the <c>ListTools</c> and
-/// <c>CallTool</c> handler properties on <see cref="McpServerOptions"/>.
+/// Bridges <see cref="IDynamicMcpToolRegistry"/> descriptors, the gateway tools of <see cref="IAbpMcpToolGateway"/>
+/// and <see cref="IAbpMcpToolInvoker"/> invocations to Microsoft's <see cref="McpServerHandlers"/> via the
+/// <c>ListTools</c> and <c>CallTool</c> handler properties on <see cref="McpServerOptions"/>.
 /// </summary>
 /// <remarks>
 /// This is the single seam between abp-mcp and the MCP SDK. If the SDK's handler shape ever
@@ -26,14 +25,10 @@ namespace AbpMcp.Registration;
 internal sealed class AbpMcpHandlerWiring : IConfigureOptions<McpServerOptions>
 {
     private readonly IServiceProvider _rootServices;
-    private readonly ILogger<AbpMcpHandlerWiring> _logger;
 
-    public AbpMcpHandlerWiring(
-        IServiceProvider rootServices,
-        ILogger<AbpMcpHandlerWiring> logger)
+    public AbpMcpHandlerWiring(IServiceProvider rootServices)
     {
         _rootServices = rootServices;
-        _logger = logger;
     }
 
     public void Configure(McpServerOptions options)
@@ -42,39 +37,33 @@ internal sealed class AbpMcpHandlerWiring : IConfigureOptions<McpServerOptions>
         options.Handlers.CallToolHandler = HandleCallAsync;
     }
 
+    /// <summary>
+    /// The listed tools the caller may see, then the gateway tools while any tool is on demand. Everything goes through
+    /// <see cref="IAbpMcpToolVisibility"/>, the gate the dispatcher's own checks mirror, so list and call cannot disagree.
+    /// </summary>
     private async ValueTask<ListToolsResult> HandleListAsync(
         RequestContext<ListToolsRequestParams> context,
         CancellationToken cancellationToken)
     {
         var (services, http) = ResolveRequestServices();
         var registry = services.GetRequiredService<IDynamicMcpToolRegistry>();
-        var authorizer = services.GetRequiredService<IAbpMcpToolAuthorizer>();
-        var disabledTools = await services.GetRequiredService<IDisabledToolsProvider>()
-            .GetDisabledToolsAsync(cancellationToken).ConfigureAwait(false);
+        var gateway = services.GetRequiredService<IAbpMcpToolGateway>();
 
         registry.Initialize();
 
-        var visibleTools = new List<Tool>(registry.Tools.Count);
-        foreach (var descriptor in registry.Tools)
-        {
-            if (disabledTools.Contains(descriptor.Name))
-            {
-                continue;
-            }
+        var candidates = registry.Tools
+            .Where(descriptor => descriptor.Listing == McpToolListing.Listed)
+            .Concat(gateway.GetListedTools());
+        var visible = await services.GetRequiredService<IAbpMcpToolVisibility>()
+            .FilterAsync(candidates, http, cancellationToken).ConfigureAwait(false);
 
-            // Same gate the dispatcher applies before invoke, so list and call cannot disagree.
-            var authorized = await authorizer.AuthorizeAsync(descriptor, http).ConfigureAwait(false);
-            if (!authorized.Succeeded)
-            {
-                continue;
-            }
-
-            visibleTools.Add(ToProtocolTool(descriptor));
-        }
-
-        return new ListToolsResult { Tools = visibleTools };
+        return new ListToolsResult { Tools = visible.Select(ToProtocolTool).ToList() };
     }
 
+    /// <summary>
+    /// A gateway tool runs in <see cref="IAbpMcpToolGateway"/>; any other name, listed or on demand, goes through
+    /// <see cref="IAbpMcpToolInvoker"/>, the same path the gateway's <c>mcp_call_tool</c> takes.
+    /// </summary>
     private async ValueTask<CallToolResult> HandleCallAsync(
         RequestContext<CallToolRequestParams> context,
         CancellationToken cancellationToken)
@@ -82,36 +71,17 @@ internal sealed class AbpMcpHandlerWiring : IConfigureOptions<McpServerOptions>
         var requestParams = context.Params
             ?? throw new InvalidOperationException("CallTool request received without params.");
         var toolName = requestParams.Name;
+        var arguments = NormalizeArguments(requestParams.Arguments);
 
         var (services, _) = ResolveRequestServices();
-        var registry = services.GetRequiredService<IDynamicMcpToolRegistry>();
-        var dispatcher = services.GetRequiredService<IAbpMcpDispatcher>();
-        var disabledTools = await services.GetRequiredService<IDisabledToolsProvider>()
-            .GetDisabledToolsAsync(cancellationToken).ConfigureAwait(false);
+        var gateway = services.GetRequiredService<IAbpMcpToolGateway>();
 
-        if (disabledTools.Contains(toolName))
-        {
-            return ErrorResult(AbpMcpErrorCodes.Disabled, $"Tool '{toolName}' is administratively disabled.");
-        }
+        var outcome = gateway.Handles(toolName)
+            ? await gateway.CallAsync(toolName, arguments, cancellationToken).ConfigureAwait(false)
+            : await services.GetRequiredService<IAbpMcpToolInvoker>()
+                .InvokeAsync(toolName, arguments, cancellationToken).ConfigureAwait(false);
 
-        if (!registry.TryGetByName(toolName, out var descriptor) || descriptor is null)
-        {
-            return ErrorResult(AbpMcpErrorCodes.UnknownTool, $"No tool named '{toolName}' is registered.");
-        }
-
-        try
-        {
-            var arguments = NormalizeArguments(requestParams.Arguments);
-            var result = await dispatcher.InvokeAsync(descriptor, arguments, cancellationToken)
-                .ConfigureAwait(false);
-
-            return SuccessResult(descriptor, result);
-        }
-        catch (AbpMcpToolException tex)
-        {
-            _logger.LogInformation(tex, "Tool {Tool} returned error {Code}", toolName, tex.Code);
-            return ErrorResult(tex.Code, tex.Message);
-        }
+        return ToCallToolResult(outcome);
     }
 
     /// <summary>
@@ -172,22 +142,14 @@ internal sealed class AbpMcpHandlerWiring : IConfigureOptions<McpServerOptions>
         return JsonSerializer.SerializeToElement(node);
     }
 
-    private static CallToolResult SuccessResult(ToolDescriptor descriptor, JsonElement payload) => new()
+    /// <summary>The protocol result: one text block, plus <c>structuredContent</c> when the outcome has it.</summary>
+    private static CallToolResult ToCallToolResult(AbpMcpToolCallOutcome outcome) => new()
     {
-        IsError = false,
-        StructuredContent = McpOutputShape.ToStructuredContent(descriptor.OutputSchema, payload),
+        IsError = outcome.IsError,
+        StructuredContent = outcome.StructuredContent,
         Content = new[]
         {
-            new TextContentBlock { Text = payload.GetRawText() } as ContentBlock,
-        },
-    };
-
-    private static CallToolResult ErrorResult(string code, string message) => new()
-    {
-        IsError = true,
-        Content = new[]
-        {
-            new TextContentBlock { Text = $"[{code}] {message}" } as ContentBlock,
+            new TextContentBlock { Text = outcome.Text } as ContentBlock,
         },
     };
 }

@@ -24,4 +24,12 @@ public sealed class McpToolAttribute : Attribute
 
     /// <summary>Optional override for the tool description. When null, the default mechanical description is used.</summary>
     public string? Description { get; init; }
+
+    /// <summary>
+    /// Whether the tool is advertised in <c>tools/list</c> (<see cref="McpToolListing.Listed"/>, the default) or kept
+    /// out of it and found through the gateway tools (<see cref="McpToolListing.OnDemand"/>). On a class it applies to
+    /// every method the class exposes; <c>[McpTool]</c> on a method replaces the class's attribute, Listing included.
+    /// The host's <c>AbpMcpOptions.ToolListing</c> patterns win over this value.
+    /// </summary>
+    public McpToolListing Listing { get; init; } = McpToolListing.Listed;
 }

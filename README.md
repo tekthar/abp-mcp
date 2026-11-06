@@ -344,6 +344,49 @@ Without Setting Management, put it in configuration:
 
 **In this process only**: add names to `AbpMcpOptions.DisabledTools`. A tool listed in either place is disabled.
 
+### Large tool sets: on-demand tools
+
+Every tool in `tools/list` costs the agent context before the first message: its name, description and schemas. With
+hundreds of tools, a large Jira-style API or many `[McpTool]` services, that is a large share of the window, and most
+of those tools are rarely used. Make them on demand. They leave `tools/list`, and four small gateway tools appear in
+their place:
+
+| Gateway tool | What it returns |
+|---|---|
+| `mcp_search_tools(query, limit?)` | Keyword matches across every tool the caller may use, listed or on demand, best first (default 10, at most 50): `name`, a one-line `description`, `http_method`, `read_only` and `listing`. No schemas. |
+| `mcp_describe_tools(names)` | For up to 20 names: the description, `inputSchema` and `outputSchema`, shaped as `tools/list` advertises them. A name the caller may not use is reported in `not_found`, like an unknown one. |
+| `mcp_call_tool(name, arguments)` | The tool's own result, exactly as a direct `tools/call` returns it. |
+| `mcp_call_tools(calls, mode)` | Up to 20 calls in one request. `sequential` (the default) stops at the first error and reports the rest as `skipped`; `parallel` runs every call. Each result has `name`, `status` (`ok`, `error`, `skipped`), `isError`, and the tool's `structuredContent`, or its `content` when it has none. |
+
+Tag a service or a method, or decide from the host without touching the service:
+
+```csharp
+[McpTool(Listing = McpToolListing.OnDemand)]   // AbpMcp.Abstractions, next to [McpTool]
+public class ReportingAppService : ApplicationService, IReportingAppService { /* ... */ }
+
+Configure<AbpMcpOptions>(o =>
+{
+    o.ToolListing.OnDemand("Jira*", "*_Delete");   // tool-name globs: * and ?, case-sensitive
+    o.ToolListing.Listed("Jira_GetIssue");         // a pin: wins over every OnDemand pattern
+});
+```
+
+Precedence, highest first: a `Listed` pin, an `OnDemand` pattern, `[McpTool(Listing = ...)]` on the method (else on the
+class), then the default, listed. Patterns match the final tool name, `ToolNamePrefix` included, and apply to add-in
+tools too. The listing is decided when the tool set is built, at startup and on `IDynamicMcpToolRegistry.Refresh()`.
+
+An on-demand tool keeps every guarantee a listed one has. Search and describe use the same permission and kill-switch
+filter as `tools/list`, so a tool the caller cannot use is never found or described. Every call goes through the same
+dispatcher as a direct `tools/call`, with the same permission check, validation, unit of work, audit entry and error
+codes, and a direct `tools/call` by name still works. The gateway tools are listed only while at least one tool is on
+demand; their names are reserved, and the kill switch turns them off like any tool. `parallel` means the calls are
+independent: each one runs whatever the others return. They still run one at a time inside the request, because a
+request's scoped services, such as an injected `DbContext` or ABP's audit log, are not safe for concurrent use.
+
+`/mcp/_discover` shows each tool's `listing` and an approximate `schema_tokens` cost (characters / 4 of its description
+and schemas), plus the totals for listed, gateway and on-demand tools. `/mcp/_explain` says whether the attribute or
+which option pattern made a tool on demand.
+
 ### Running more than one instance
 
 MCP sessions are stateful by default, and a session lives in the memory of the instance that created it. Behind a
@@ -392,7 +435,7 @@ from "give up". The codes are stable (`AbpMcpErrorCodes`):
 ## How do we know it works?
 
 Agents act on behalf of real users, so a gap between the MCP path and your REST API would be a security hole. More than
-170 automated tests run on every build, in three layers:
+350 automated tests run on every build, in three layers:
 
 - **End to end, with the official MCP SDK client**: the bundled sample is booted in memory and driven over streamable
   HTTP. Tests cover the `tools/list` shape, structured results, error codes, `Origin` rules, session lifetime and

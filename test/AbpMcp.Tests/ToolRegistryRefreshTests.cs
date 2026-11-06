@@ -1,5 +1,6 @@
 using System.Text.Json.Nodes;
 using AbpMcp.Addins;
+using AbpMcp.Listing;
 using AbpMcp.Metadata;
 using AbpMcp.Notifications;
 using AbpMcp.Registration;
@@ -48,6 +49,7 @@ public class ToolRegistryRefreshTests
         return new DynamicMcpToolRegistry(
             reader,
             Array.Empty<IAbpMcpAddin>(),
+            new ToolListingResolver(options),
             new NullServiceProvider(),
             options,
             NullLogger<DynamicMcpToolRegistry>.Instance);

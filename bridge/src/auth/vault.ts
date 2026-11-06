@@ -146,7 +146,21 @@ interface KeyringEntry {
   deletePassword(): Promise<boolean>;
 }
 
-type KeyringModule = { AsyncEntry: new (service: string, account: string) => KeyringEntry };
+/** The `@napi-rs/keyring` options bag; only `linux.store` is used, and only on Linux. */
+interface EntryOptions {
+  readonly linux?: { readonly store: "secret-service" | "keyutils" };
+}
+
+export type KeyringModule = { AsyncEntry: new (service: string, account: string, options?: EntryOptions) => KeyringEntry };
+
+/**
+ * Every entry is pinned to the Secret Service (gnome-keyring, KWallet, KeePassXC). Unpinned, the library falls
+ * back silently to the kernel keyutils keyring when no Secret Service runs, as on a server without a desktop, and
+ * that keyring is cleared at every reboot: the bridge would delete the file copy and lose the sign-in. Pinned,
+ * such a machine has no usable keychain and the bridge keeps refresh tokens in the owner-only file instead.
+ * The option is ignored on macOS and Windows.
+ */
+export const ENTRY_OPTIONS: EntryOptions = { linux: { store: "secret-service" } };
 
 /** The OS keychain, through the optional `@napi-rs/keyring` dependency. */
 export class KeychainSecretStore implements SecretStore {
@@ -155,10 +169,10 @@ export class KeychainSecretStore implements SecretStore {
   private constructor(private readonly keyring: KeyringModule) {}
 
   /** The keychain store, or `undefined` when the native module or a keychain service is missing. */
-  static async probe(log: Logger): Promise<KeychainSecretStore | undefined> {
+  static async probe(log: Logger, load: () => Promise<unknown> = () => import("@napi-rs/keyring")): Promise<KeychainSecretStore | undefined> {
     try {
-      const keyring = await import("@napi-rs/keyring") as unknown as KeyringModule;
-      await new keyring.AsyncEntry(SERVICE, "__probe__").getPassword();
+      const keyring = await load() as KeyringModule;
+      await new keyring.AsyncEntry(SERVICE, "__probe__", ENTRY_OPTIONS).getPassword();
       return new KeychainSecretStore(keyring);
     } catch (error) {
       log.debug("No usable OS keychain; refresh tokens will be kept in an owner-only file", error);
@@ -188,7 +202,7 @@ export class KeychainSecretStore implements SecretStore {
   }
 
   private entry(profile: string, kind: SecretKind): KeyringEntry {
-    return new this.keyring.AsyncEntry(SERVICE, `${profile}:${kind}`);
+    return new this.keyring.AsyncEntry(SERVICE, `${profile}:${kind}`, ENTRY_OPTIONS);
   }
 }
 

@@ -125,7 +125,9 @@ The bridge keeps refresh tokens in the OS keychain (macOS Keychain, Windows Cred
 is one, and otherwise in an owner-only file under the bridge's config directory. Windows Credential Manager holds at
 most 2560 bytes per secret, which is 1280 characters as stored, and ABP's OpenIddict refresh tokens are longer than
 that. When the keychain refuses a token, the bridge keeps it in the file instead, removes any older keychain entry,
-and says so once. `login` and `doctor` name the store the profile's token is actually in. `ABP_MCP_KEYCHAIN=off`
+and says so once. On Linux the keychain means the Secret Service (gnome-keyring, KWallet, KeePassXC) only: the
+library's fallback, the kernel keyring, is cleared at every reboot, so a machine without a Secret Service (a server,
+WSL) uses the file. `login` and `doctor` name the store the profile's token is actually in. `ABP_MCP_KEYCHAIN=off`
 always uses the file.
 
 Every discovered URL follows the same rule as the URLs in a profile: https, or plain http only for `localhost`,
@@ -143,6 +145,33 @@ and check the result.
 Production profiles default to the `read-only` preset, which shows only tools backed by GET endpoints. The bridge
 reads each tool's HTTP method from `/mcp/_discover`, which `MapAbpMcp` serves. If `_discover` is unavailable to the
 user, the preset hides every tool rather than guess.
+
+## Gateway mode and `run_code`
+
+`tools.gateway` keeps a large tool set out of Claude's context ({I(120)}, {I(121)}). The bridge lists only the
+`pinned` tools (globs) and four of its own: `search_tools`, `describe_tools`, `call_tool` and, unless `code` is
+`false`, `run_code`. The tools it searches are the ones the profile's filter allows, from the last `tools/list`; the
+host's `tools/list_changed` refreshes them.
+
+- **Search** is keyword ranking with no embeddings: names are split on camelCase, snake_case and dots, a name match
+  outweighs a description match, a word matches its plural, and a result must contain every word of a one- or
+  two-word query (60% of a longer one). Results carry a one-line description and, when the bridge has read the host's
+  `_discover`, the HTTP method.
+- **`call_tool`** takes the same path as a call to a listed tool: the filter (a write tool under the read-only preset
+  is refused locally), the audit log, and the retry rules below.
+- **`run_code`** runs an async JavaScript function in QuickJS compiled to WebAssembly, a fresh runtime per run with
+  no network, file, process or module access. The function reaches the host only through `tools.<name>(args)` (or
+  `tools.call(name, args)`), `tools.search` and `tools.describe`, and every call takes the `call_tool` path. A call
+  resolves to the tool's structured result, or its text parsed as JSON, and throws when the tool reports an error.
+  Limits: 60 seconds for the whole run (an interrupt also stops CPU loops), 50 tool calls, 64 MB of memory, 20,000
+  characters of code. The result is cut to about 24,000 characters, largest values first, and stays valid JSON.
+- **The call journal**: the answer always lists the run's tool calls as `ok`, `error`, `refused` (stopped by the
+  bridge, never sent) or `unknown` (it may have run: the connection broke after it was sent, or the run ended while it
+  was in flight). When a script fails part-way, Claude can see which writes already happened instead of repeating them.
+
+An AbpMcp host can also keep tools out of `tools/list` itself ({I(119)}): its `mcp_search_tools`,
+`mcp_describe_tools` and `mcp_call_tool(s)` are ordinary tools to the bridge, which can pin them or find them by
+search.
 
 ## How the bridge decides to retry
 

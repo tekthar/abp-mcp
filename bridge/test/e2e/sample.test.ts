@@ -34,6 +34,7 @@ describe("end to end against the Library sample", { skip: sampleUrl ? false : "A
         dev: { url: sampleUrl, auth: { type: "none" }, notes: "Library sample." },
         prod: { url: sampleUrl, stage: "production", auth: { type: "none" } },
         "prod-lists": { url: sampleUrl, stage: "production", auth: { type: "none" }, tools: { include: ["*_List"] } },
+        gateway: { url: sampleUrl, auth: { type: "none" }, tools: { gateway: { pinned: ["Library_Overview"] } } },
       },
     }));
   });
@@ -107,6 +108,29 @@ describe("end to end against the Library sample", { skip: sampleUrl ? false : "A
       const names = (await client.listTools()).tools.map((tool) => tool.name);
       assert.ok(names.includes("Member_List"));
       assert.equal((await call(client, "Member_List")).isError ?? false, false);
+    } finally {
+      await client.close();
+    }
+  });
+
+  it("gateway mode: lists the pinned tool, finds and calls the rest, and runs code against the host (#120, #121)", async () => {
+    const client = await connect("gateway");
+    try {
+      const names = (await client.listTools()).tools.map((tool) => tool.name).sort();
+      assert.deepEqual(names, ["Library_Overview", "call_tool", "describe_tools", "run_code", "search_tools"]);
+
+      const found = JSON.parse(text(await call(client, "search_tools", { query: "list members" }))) as { results: { name: string; httpMethod?: string }[] };
+      assert.equal(found.results[0]?.name, "Member_List");
+
+      const listed = await call(client, "call_tool", { name: "Member_List" });
+      assert.notEqual(listed.isError, true, text(listed));
+
+      const run = JSON.parse(text(await call(client, "run_code", {
+        code: "async () => { const overview = await tools.Library_Overview(); const members = await tools.Member_List(); return { titles: overview.titles, members: members.result.length }; }",
+      }))) as { result: { titles: number; members: number }; calls: { tool: string; status: string }[] };
+      assert.ok(run.result.titles > 0);
+      assert.ok(run.result.members >= 0);
+      assert.deepEqual(run.calls.map((entry) => `${entry.tool}:${entry.status}`), ["Library_Overview:ok", "Member_List:ok"]);
     } finally {
       await client.close();
     }
