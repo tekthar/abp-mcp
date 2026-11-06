@@ -109,6 +109,9 @@ metadata's `resource` is the profile's URL (or a parent path on the same origin)
 `issuer` is the one it was fetched for, and it refuses to sign in otherwise. The browser is opened only for an https
 (or loopback http) URL. No other scheme is ever passed to the OS URL handler.
 
+[MCP OAuth for ABP + OpenIddict](oauth.md) shows how to publish that metadata, register the resource with OpenIddict
+and check the result.
+
 ### The read-only preset needs `/mcp/_discover`
 
 Production profiles default to the `read-only` preset, which shows only tools backed by GET endpoints. The bridge

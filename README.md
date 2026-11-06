@@ -113,6 +113,10 @@ claude mcp add --transport http my-app https://your-host/mcp --header "Authoriza
 
 Agents call your tools with the same bearer tokens your ABP identity server issues to every other client.
 
+**Letting Claude sign users in directly.** Claude Code, Claude Desktop and claude.ai connectors can run the browser
+sign-in themselves when your host publishes MCP OAuth metadata. [MCP OAuth for ABP + OpenIddict](https://github.com/tekthar/abp-mcp/blob/main/docs/oauth.md)
+sets up the API host and the AuthServer, keeps MCP tokens apart from REST tokens, and ends with a checklist.
+
 **Signing in as yourself, without pasting tokens.** The [abp-mcp bridge](https://github.com/tekthar/abp-mcp/tree/main/bridge)
 runs on each user's machine: it signs them in through your existing OpenIddict clients (browser sign-in, or a password
 where needed), keeps the token fresh, reaches intranet and VPN-only hosts, and can limit an environment to read-only
@@ -344,6 +348,7 @@ Every bug fix ships with a test that would have caught it, and CodeQL scans ever
 | Guide | What it covers |
 |---|---|
 | [Dynamic add-ins](https://github.com/tekthar/abp-mcp/blob/main/docs/dynamic-addins.md) | `IAbpMcpAddin`, dynamic tools, enriching tools, changing the tool set at runtime |
+| [MCP OAuth for ABP + OpenIddict](https://github.com/tekthar/abp-mcp/blob/main/docs/oauth.md) | Letting Claude sign users in directly: protected-resource metadata, a separate audience for MCP tokens, the OpenIddict resource and client, and a deployment checklist |
 | [The abp-mcp bridge](https://github.com/tekthar/abp-mcp/blob/main/docs/bridge.md) | Connecting Claude Code and Claude Desktop as the signed-in user: the OpenIddict client, token lifetimes, retries |
 | [Design](https://github.com/tekthar/abp-mcp/blob/main/DESIGN.md) | Premises, the approaches considered, and what is deliberately out of scope |
 | [Changelog](https://github.com/tekthar/abp-mcp/blob/main/CHANGELOG.md) | What each release changed |
