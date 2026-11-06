@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, generateKeyPairSync, randomBytes, sign, type KeyObject } from "node:crypto";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 
@@ -7,12 +7,29 @@ export interface OAuthStubOptions {
   readonly password?: string;
   readonly clientSecret?: string;
   readonly accessTokenLifetimeSeconds?: number;
+  /**
+   * Named users, each with its own `sub`. The browser flow signs in the user named by `login_hint` (the first
+   * user without one); the password grant checks the user's password. Without users, the stub has one user,
+   * `username`/`password`, with no `sub`.
+   */
+  readonly users?: Readonly<Record<string, { readonly sub: string; readonly password?: string }>>;
+  /**
+   * Issue access tokens as RS256 JWTs for this audience, and publish the signing key at `jwks_uri`, so a real
+   * resource server (JwtBearer) can validate them. Without it, access tokens are opaque.
+   */
+  readonly jwt?: { readonly audience: string };
 }
 
 interface IssuedCode {
   readonly challenge: string;
   readonly redirectUri: string;
   readonly scope: string;
+  readonly user?: string;
+}
+
+interface IssuedRefreshToken {
+  readonly scope: string;
+  readonly user?: string;
 }
 
 /**
@@ -23,7 +40,8 @@ export class OAuthStub {
   private server?: http.Server;
   private readonly codes = new Map<string, IssuedCode>();
   private readonly accessTokens = new Map<string, number>();
-  private readonly refreshTokens = new Set<string>();
+  private readonly refreshTokens = new Map<string, IssuedRefreshToken>();
+  private signingKey?: { readonly privateKey: KeyObject; readonly jwk: Record<string, unknown> };
 
   /** Every token request's form fields, in order. */
   readonly tokenRequests: Record<string, string>[] = [];
@@ -40,9 +58,16 @@ export class OAuthStub {
 
   issuer = "";
 
-  async start(): Promise<this> {
+  /** Listen on `port` (a free one by default), on 127.0.0.1. */
+  async start(port = 0): Promise<this> {
+    if (this.options.jwt) {
+      const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
+      const kid = randomBytes(8).toString("hex");
+      this.signingKey = { privateKey, jwk: { ...publicKey.export({ format: "jwk" }), kid, use: "sig", alg: "RS256" } };
+    }
+
     this.server = http.createServer((request, response) => void this.handle(request, response));
-    await new Promise<void>((resolve) => this.server!.listen(0, "127.0.0.1", resolve));
+    await new Promise<void>((resolve) => this.server!.listen(port, "127.0.0.1", resolve));
     this.issuer = `http://127.0.0.1:${(this.server.address() as AddressInfo).port}`;
     return this;
   }
@@ -80,8 +105,13 @@ export class OAuthStub {
         authorization_endpoint: `${this.issuer}/connect/authorize`,
         token_endpoint: `${this.issuer}/connect/token`,
         revocation_endpoint: `${this.issuer}/connect/revocation`,
-        scopes_supported: ["openid", "profile", "offline_access", "Library"],
+        scopes_supported: ["openid", "profile", "offline_access", "Library", ...(this.options.jwt ? [this.options.jwt.audience] : [])],
+        ...(this.signingKey ? { jwks_uri: `${this.issuer}/.well-known/jwks.json` } : {}),
       });
+    }
+
+    if (url.pathname === "/.well-known/jwks.json" && this.signingKey) {
+      return json(response, 200, { keys: [this.signingKey.jwk] });
     }
 
     if (url.pathname === "/connect/authorize") {
@@ -93,7 +123,12 @@ export class OAuthStub {
 
       const code = randomBytes(16).toString("hex");
       this.issued.push(code);
-      this.codes.set(code, { challenge: query.code_challenge, redirectUri: query.redirect_uri, scope: query.scope ?? "" });
+      this.codes.set(code, {
+        challenge: query.code_challenge,
+        redirectUri: query.redirect_uri,
+        scope: query.scope ?? "",
+        ...(this.browserUser(query.login_hint) ? { user: this.browserUser(query.login_hint) } : {}),
+      });
       const redirect = new URL(query.redirect_uri);
       redirect.searchParams.set("code", code);
       redirect.searchParams.set("state", this.tamperState ? "not-the-state" : query.state ?? "");
@@ -127,22 +162,24 @@ export class OAuthStub {
           return json(response, 400, { error: "invalid_grant", error_description: "The code or verifier is invalid." });
         }
 
-        return this.issue(response, issued.scope);
+        return this.issue(response, issued.scope, true, issued.user);
       }
 
-      case "refresh_token":
-        if (!this.refreshTokens.delete(form.refresh_token ?? "")) {
+      case "refresh_token": {
+        const refreshed = this.refreshTokens.get(form.refresh_token ?? "");
+        if (!refreshed || !this.refreshTokens.delete(form.refresh_token ?? "")) {
           return json(response, 400, { error: "invalid_grant", error_description: "The refresh token is no longer valid." });
         }
 
-        return this.issue(response, "offline_access");
+        return this.issue(response, refreshed.scope, true, refreshed.user);
+      }
 
       case "password":
-        if (form.username !== (this.options.username ?? "alice") || form.password !== (this.options.password ?? "correct horse")) {
+        if (!this.checkPassword(form.username, form.password)) {
           return json(response, 400, { error: "invalid_grant", error_description: "Invalid username or password." });
         }
 
-        return this.issue(response, form.scope ?? "");
+        return this.issue(response, form.scope ?? "", true, this.options.users ? form.username : undefined);
 
       case "client_credentials":
         if (form.client_secret !== (this.options.clientSecret ?? "s3cret-client")) {
@@ -156,20 +193,61 @@ export class OAuthStub {
     }
   }
 
-  private issue(response: http.ServerResponse, scope: string, allowRefresh = true): void {
+  /** The user a browser sign-in approves: the one `login_hint` names, else the first. */
+  private browserUser(hint: string | undefined): string | undefined {
+    const users = this.options.users;
+    if (!users) {
+      return undefined;
+    }
+
+    return hint && hint in users ? hint : Object.keys(users)[0];
+  }
+
+  private checkPassword(username: string | undefined, password: string | undefined): boolean {
+    const users = this.options.users;
+    if (users) {
+      const user = username === undefined ? undefined : users[username];
+      return user?.password !== undefined && user.password === password;
+    }
+
+    return username === (this.options.username ?? "alice") && password === (this.options.password ?? "correct horse");
+  }
+
+  private issue(response: http.ServerResponse, scope: string, allowRefresh = true, user?: string): void {
     const lifetime = this.options.accessTokenLifetimeSeconds ?? 3600;
-    const accessToken = `at-${randomBytes(12).toString("hex")}`;
+    const accessToken = this.signingKey
+      ? this.signJwt(scope, lifetime, user)
+      : `at-${randomBytes(12).toString("hex")}`;
     this.issued.push(accessToken);
     this.accessTokens.set(accessToken, Date.now() + lifetime * 1000);
     const body: Record<string, unknown> = { access_token: accessToken, token_type: "Bearer", expires_in: lifetime };
     if (allowRefresh && !this.noRefreshTokens && scope.split(" ").includes("offline_access")) {
       const refreshToken = `rt-${randomBytes(12).toString("hex")}`;
       this.issued.push(refreshToken);
-      this.refreshTokens.add(refreshToken);
+      this.refreshTokens.set(refreshToken, { scope, ...(user ? { user } : {}) });
       body.refresh_token = refreshToken;
     }
 
     json(response, 200, body);
+  }
+
+  private signJwt(scope: string, lifetime: number, user: string | undefined): string {
+    const key = this.signingKey!;
+    const now = Math.floor(Date.now() / 1000);
+    const sub = user ? this.options.users?.[user]?.sub : undefined;
+    const header = encodeSegment({ alg: "RS256", typ: "at+jwt", kid: key.jwk.kid });
+    const payload = encodeSegment({
+      iss: this.issuer,
+      aud: this.options.jwt!.audience,
+      iat: now,
+      nbf: now,
+      exp: now + lifetime,
+      jti: randomBytes(8).toString("hex"),
+      scope,
+      ...(sub ? { sub, preferred_username: user } : {}),
+    });
+    const signature = sign("sha256", Buffer.from(`${header}.${payload}`), key.privateKey).toString("base64url");
+    return `${header}.${payload}.${signature}`;
   }
 }
 
@@ -182,6 +260,11 @@ export async function autoConsent(url: string): Promise<void> {
   }
 
   await (await fetch(location)).text();
+}
+
+/** One base64url-encoded JSON segment of a JWT. */
+function encodeSegment(value: unknown): string {
+  return Buffer.from(JSON.stringify(value)).toString("base64url");
 }
 
 export function json(response: http.ServerResponse, status: number, body: unknown): void {

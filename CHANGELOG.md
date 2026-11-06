@@ -6,6 +6,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Changed
+
+- **Library sample:** a permission-gated `Member_Delete` tool (`Library.Members.Delete`), and an authenticated mode
+  turned on by `Sample:Auth:Issuer`, set up as [docs/oauth.md](docs/oauth.md) describes (JwtBearer, the MCP SDK's
+  RFC 9728 metadata and challenge, `AbpMcpOptions.AuthorizationPolicy`), with permission grants from
+  `Sample:Auth:Grants`. The default sample stays anonymous ([#112](https://github.com/tekthar/abp-mcp/issues/112)).
+
 ## [0.5.0] — 2026-11-06
 
 New options for production hosts (one authorization policy for every MCP endpoint, a stateless transport for
