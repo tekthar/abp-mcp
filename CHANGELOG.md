@@ -6,6 +6,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-11-06
+
+On-demand tools and gateway tools for large tool sets: a host can keep most of its tools out of `tools/list` and let
+the agent find, describe and call them on demand, with the same permission checks as a listed tool.
+
 ### Added
 
 - **On-demand tools and gateway tools** ([#119](https://github.com/tekthar/abp-mcp/issues/119)), so a large tool set no
@@ -228,7 +233,8 @@ First public pre-release. Functional but pre-alpha — API surface will move bas
 - No Roslyn analyzer yet to flag `[McpTool]` on non-`IApplicationService` types at compile time. Targeted for v0.3.
 - `services.AddAbpMcpAssembly(asm)` already removes the two-step registration friction for the common case. Letting `AbpMcpOptions.ExposedAssemblies.Create(asm)` *itself* auto-register with `ConventionalControllers` (so the lambda-style `Configure<AbpMcpOptions>(...)` form needs no companion call either) is queued for v0.2.
 
-[Unreleased]: https://github.com/tekthar/abp-mcp/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/tekthar/abp-mcp/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/tekthar/abp-mcp/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/tekthar/abp-mcp/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/tekthar/abp-mcp/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/tekthar/abp-mcp/compare/v0.3.0-alpha...v0.4.0
