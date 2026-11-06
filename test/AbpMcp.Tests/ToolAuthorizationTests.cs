@@ -6,6 +6,8 @@ using FluentAssertions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace AbpMcp.Tests;
 
@@ -97,6 +99,51 @@ public class ToolAuthorizationTests
             .Succeeded.Should().BeTrue();
     }
 
+    [Fact]
+    public async Task UndefinedPermission_RefusesTheTool_InsteadOfThrowing()
+    {
+        // #84: ASP.NET Core throws "No policy found" for an undefined name, which failed tools/list for everyone.
+        var authorizer = CreateAuthorizer();
+        var descriptor = Describe(typeof(MisconfiguredService), nameof(MisconfiguredService.Typo));
+
+        var result = await authorizer.AuthorizeAsync(descriptor, Context(User(perms: new[] { "Perm.Undefined" })));
+
+        result.Succeeded.Should().BeFalse("an undefined permission must never grant access");
+        result.FailureReason.Should().Be("Missing permission: Perm.Undefined (it is not defined on this server).");
+    }
+
+    [Fact]
+    public async Task UndefinedPolicy_OnlyInAuthorizeData_IsRefusedToo()
+    {
+        // An add-in can attach [Authorize] data without listing its policy as a permission.
+        var authorizer = CreateAuthorizer();
+        var descriptor = Describe(typeof(GuardedService), nameof(GuardedService.Both)) with
+        {
+            RequiredPermissions = Array.Empty<string>(),
+            AuthorizeData = new IAuthorizeData[] { new AuthorizeAttribute("Perm.Undefined") },
+        };
+
+        var result = await authorizer.AuthorizeAsync(descriptor, Context(User()));
+
+        result.Succeeded.Should().BeFalse();
+        result.FailureReason.Should().Contain("Perm.Undefined");
+    }
+
+    [Fact]
+    public async Task UndefinedPermission_IsLoggedOncePerTool()
+    {
+        var logger = new RecordingLogger();
+        var authorizer = CreateAuthorizer(new UndefinedPermissionLog(logger));
+        var descriptor = Describe(typeof(MisconfiguredService), nameof(MisconfiguredService.Typo));
+
+        for (var i = 0; i < 3; i++)
+        {
+            await authorizer.AuthorizeAsync(descriptor, Context(User()));
+        }
+
+        logger.Warnings.Should().ContainSingle().Which.Should().Contain("Typo").And.Contain("Perm.Undefined");
+    }
+
     private static (IReadOnlyList<string> Permissions, IReadOnlyList<IAuthorizeData> Data) Resolve(Type type, string methodName) =>
         ToolDescriptorBuilder.ResolveAuthorization(type, type.GetMethod(methodName)!);
 
@@ -116,7 +163,7 @@ public class ToolAuthorizationTests
         };
     }
 
-    private static AbpMcpToolAuthorizer CreateAuthorizer()
+    private static AbpMcpToolAuthorizer CreateAuthorizer(UndefinedPermissionLog? undefinedPermissions = null)
     {
         var services = new ServiceCollection();
         services.AddLogging();
@@ -129,7 +176,8 @@ public class ToolAuthorizationTests
 
         return new AbpMcpToolAuthorizer(
             provider.GetRequiredService<IAuthorizationService>(),
-            provider.GetRequiredService<IAuthorizationPolicyProvider>());
+            provider.GetRequiredService<IAuthorizationPolicyProvider>(),
+            undefinedPermissions ?? new UndefinedPermissionLog(NullLogger<UndefinedPermissionLog>.Instance));
     }
 
     private static HttpContext Context(ClaimsPrincipal user) => new DefaultHttpContext { User = user };
@@ -150,6 +198,29 @@ public class ToolAuthorizationTests
 
         [AllowAnonymous]
         public void Anonymous() { }
+    }
+
+    private sealed class MisconfiguredService
+    {
+        [Authorize("Perm.Undefined")]
+        public void Typo() { }
+    }
+
+    private sealed class RecordingLogger : ILogger<UndefinedPermissionLog>
+    {
+        public List<string> Warnings { get; } = new();
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+        {
+            if (logLevel == LogLevel.Warning)
+            {
+                Warnings.Add(formatter(state, exception));
+            }
+        }
     }
 
     private sealed class RoleService

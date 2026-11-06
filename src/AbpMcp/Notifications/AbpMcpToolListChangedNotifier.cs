@@ -6,7 +6,7 @@ namespace AbpMcp.Notifications;
 
 /// <summary>
 /// Default <see cref="IAbpMcpToolListChangedNotifier"/>: rebuilds the registry, then broadcasts
-/// <c>notifications/tools/list_changed</c> to every tracked session, pruning any that fail to receive.
+/// <c>notifications/tools/list_changed</c> to every session with an open notification stream.
 /// </summary>
 internal sealed class AbpMcpToolListChangedNotifier : IAbpMcpToolListChangedNotifier
 {
@@ -46,10 +46,10 @@ internal sealed class AbpMcpToolListChangedNotifier : IAbpMcpToolListChangedNoti
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                // Best-effort fan-out: a send fails when the session is gone — drop it and keep going so
-                // one dead session can't abort the broadcast. Caller cancellation (OCE) is NOT swallowed.
-                _sessions.Remove(server);
-                _logger.LogDebug(ex, "abp-mcp dropped a dead MCP session while broadcasting tools/list_changed.");
+                // Best-effort fan-out: a send can fail while a session is closing. Keep going so one closing
+                // session can't abort the broadcast; its stream's request ending removes it from the registry.
+                // Caller cancellation (OCE) is NOT swallowed.
+                _logger.LogDebug(ex, "abp-mcp could not send tools/list_changed to a closing MCP session.");
             }
         }
 

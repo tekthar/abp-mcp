@@ -1,0 +1,105 @@
+name: Bridge
+
+# abp-mcp-bridge (bridge/) is an npm package released separately from the NuGet package. It runs only when
+# the bridge, or the server and sample its end-to-end tests drive, change.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "bridge/**"
+      - "src/**"
+      - "samples/**"
+      - "Directory.Build.props"
+      - ".github/workflows/bridge.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "bridge/**"
+      - "src/**"
+      - "samples/**"
+      - "Directory.Build.props"
+      - ".github/workflows/bridge.yml"
+  workflow_dispatch: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  bridge:
+    name: Bridge (lint, typecheck, tests, end-to-end, pack)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: bridge
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: bridge/package-lock.json
+
+      - name: Setup .NET 10 (for the Library sample)
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Install
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit and integration tests
+        run: npm test
+
+      - name: Start the Library sample
+        working-directory: .
+        env:
+          ASPNETCORE_ENVIRONMENT: Development
+          ASPNETCORE_URLS: http://127.0.0.1:5000
+        run: |
+          dotnet run --project samples/AbpMcp.Sample --no-launch-profile > sample.log 2>&1 &
+          for attempt in $(seq 1 90); do
+            if curl -fsS http://127.0.0.1:5000/mcp/_discover > /dev/null; then
+              echo "The sample is up."
+              exit 0
+            fi
+            sleep 2
+          done
+          cat sample.log
+          exit 1
+
+      - name: End-to-end tests against the sample
+        env:
+          ABP_MCP_E2E_URL: http://127.0.0.1:5000/mcp
+        run: npm run test:e2e
+
+      - name: Check the npm package contents
+        run: node scripts/check-pack.mjs
+
+      - name: Build the Claude Desktop extension (.mcpb)
+        run: npm run pack:mcpb
+
+      - name: Upload the .mcpb
+        uses: actions/upload-artifact@v7
+        with:
+          name: abp-mcp-bridge-mcpb
+          path: bridge/*.mcpb
+          if-no-files-found: error
+
+      - name: Sample log
+        if: failure()
+        working-directory: .
+        run: cat sample.log || true

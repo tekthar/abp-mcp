@@ -1,0 +1,60 @@
+{
+  "name": "@tekthar/abp-mcp-bridge",
+  "version": "0.1.0",
+  "description": "Connect Claude Code and Claude Desktop to any AbpMcp endpoint, signed in as you: a local stdio bridge with sign-in, token refresh, profiles and tool filtering.",
+  "license": "MIT",
+  "author": "tekthar",
+  "homepage": "https://github.com/tekthar/abp-mcp/tree/main/bridge#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tekthar/abp-mcp.git",
+    "directory": "bridge"
+  },
+  "bugs": "https://github.com/tekthar/abp-mcp/issues",
+  "keywords": [
+    "abp",
+    "abp-framework",
+    "mcp",
+    "model-context-protocol",
+    "claude",
+    "bridge",
+    "oauth",
+    "openiddict"
+  ],
+  "type": "module",
+  "bin": {
+    "abp-mcp-bridge": "dist/bin.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint .",
+    "pretest": "tsc -p tsconfig.test.json",
+    "test": "node --test --test-reporter=spec \".test-build/test/unit/**/*.test.js\" \".test-build/test/integration/**/*.test.js\"",
+    "test:e2e": "tsc -p tsconfig.test.json && npm run build && node --test --test-reporter=spec \".test-build/test/e2e/**/*.test.js\"",
+    "pack:mcpb": "npm run build && node scripts/build-mcpb.mjs",
+    "prepack": "npm run build"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.2"
+  },
+  "optionalDependencies": {
+    "@napi-rs/keyring": "2.1.2"
+  },
+  "devDependencies": {
+    "@anthropic-ai/mcpb": "2.1.2",
+    "@eslint/js": "9.39.5",
+    "@types/node": "22.20.5",
+    "eslint": "9.39.5",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.72.1"
+  }
+}

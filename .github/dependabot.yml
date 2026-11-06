@@ -51,3 +51,17 @@ updates:
       actions:
         patterns:
           - "*"
+
+  # abp-mcp-bridge (npm). Its runtime dependency is the MCP TypeScript SDK; dev tooling is grouped.
+  - package-ecosystem: "npm"
+    directory: "/bridge"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "bridge"
+    groups:
+      bridge-dev-tooling:
+        dependency-type: "development"

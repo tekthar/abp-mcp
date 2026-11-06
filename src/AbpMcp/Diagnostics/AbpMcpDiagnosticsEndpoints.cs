@@ -97,6 +97,8 @@ public static class AbpMcpDiagnosticsEndpoints
         var options = context.RequestServices.GetRequiredService<IOptions<AbpMcpOptions>>().Value;
         var explanations = await AbpMcpExposureExplainer.ExplainAsync(context.RequestServices, options, serviceFilter)
             .ConfigureAwait(false);
+        var undefinedPermissions = await AbpMcpExposureExplainer.FindUndefinedPermissionsAsync(context.RequestServices)
+            .ConfigureAwait(false);
 
         var response = new
         {
@@ -110,6 +112,8 @@ public static class AbpMcpDiagnosticsEndpoints
                 .Where(e => e.IsAutoDiscovered)
                 .Select(e => e.Assembly.GetName().Name)
                 .ToArray(),
+            // Tools no caller can use: they require a permission or policy this host does not define.
+            undefined_permissions = undefinedPermissions,
             count = explanations.Count,
             decisions = explanations,
         };

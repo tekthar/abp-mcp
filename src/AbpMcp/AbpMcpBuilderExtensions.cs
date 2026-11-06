@@ -46,6 +46,7 @@ public static class AbpMcpBuilderExtensions
         services.TryAddSingleton<IToolDescriptorBuilder, ToolDescriptorBuilder>();
         services.TryAddSingleton<IDynamicMcpToolRegistry, DynamicMcpToolRegistry>();
         services.TryAddTransient<IAbpMcpToolAuthorizer, AbpMcpToolAuthorizer>();
+        services.TryAddSingleton<UndefinedPermissionLog>();
         services.TryAddScoped<IAbpMcpDispatcher, AbpMcpDispatcher>();
         services.TryAddSingleton(TimeProvider.System);
         services.TryAddSingleton<IDisabledToolsProvider, DisabledToolsProvider>();
@@ -104,6 +105,9 @@ public static class AbpMcpBuilderExtensions
             .Value;
 
         var convention = endpoints.MapMcp(options.Path);
+
+        // Applied before the origin guard so the guard wraps it: a refused request never reaches the tracker.
+        McpNotificationStreamTracker.Apply(convention, endpoints.ServiceProvider.GetRequiredService<McpSessionRegistry>());
         McpOriginGuard.Apply(convention, options);
 
         if (!options.AllowAnonymous)
