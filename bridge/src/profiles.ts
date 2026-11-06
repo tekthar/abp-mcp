@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { urlPolicyViolation } from "./auth/url-policy.js";
 import { profilesPath } from "./paths.js";
 
 export type Stage = "development" | "staging" | "production";
@@ -315,15 +316,13 @@ function parsePorts(value: unknown, where: string): number[] {
 
 /** HTTPS only, except for loopback hosts, so a token never crosses the network in clear text. */
 function parseUrl(value: string, where: string): string {
-  let url: URL;
   try {
-    url = new URL(value);
+    new URL(value);
   } catch {
     throw new ProfileError(`${where} is not a valid URL: '${value}'.`);
   }
 
-  const loopback = ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
-  if (url.protocol !== "https:" && !(url.protocol === "http:" && loopback)) {
+  if (urlPolicyViolation(value)) {
     throw new ProfileError(`${where} must use https (plain http is allowed only for localhost): '${value}'.`);
   }
 

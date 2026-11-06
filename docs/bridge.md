@@ -102,6 +102,13 @@ When a profile has no `auth.authority`, the bridge sends one unauthenticated req
 the well-known location, the bridge takes the authorization server and scopes from it and sends its `resource` value
 (RFC 8707) when signing in. Without it, profiles set `auth.authority` and `auth.scope`, and `doctor` says so.
 
+Every discovered URL follows the same rule as the URLs in a profile: https, or plain http only for `localhost`,
+`127.0.0.1` and `[::1]`. That covers the `resource_metadata` URL, the authorization server, and its token,
+authorization and revocation endpoints, whether or not `auth.authority` is set. The bridge also checks that the
+metadata's `resource` is the profile's URL (or a parent path on the same origin) and that the authorization server's
+`issuer` is the one it was fetched for, and it refuses to sign in otherwise. The browser is opened only for an https
+(or loopback http) URL. No other scheme is ever passed to the OS URL handler.
+
 ### The read-only preset needs `/mcp/_discover`
 
 Production profiles default to the `read-only` preset, which shows only tools backed by GET endpoints. The bridge

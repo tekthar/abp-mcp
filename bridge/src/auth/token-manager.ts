@@ -148,6 +148,7 @@ export class TokenManager {
           this.options.redactor.add(refreshToken);
           await this.fetch(target.server.revocationEndpoint, {
             method: "POST",
+            redirect: "error",
             headers: { "content-type": "application/x-www-form-urlencoded" },
             body: new URLSearchParams({ token: refreshToken, token_type_hint: "refresh_token", client_id: this.profile.auth.clientId ?? "" }).toString(),
           });

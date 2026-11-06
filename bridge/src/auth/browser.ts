@@ -4,6 +4,7 @@ import type { AddressInfo } from "node:net";
 import type { Logger } from "../log.js";
 import { NotSignedInError, OAuthError } from "./errors.js";
 import { createPkce } from "./pkce.js";
+import { requireSecureUrl } from "./url-policy.js";
 
 export type OpenUrl = (url: string) => void | Promise<void>;
 
@@ -36,6 +37,8 @@ const DEFAULT_TIMEOUT_MS = 5 * 60 * 1000;
  * (RFC 8252). Resolves with the code once the browser comes back with the matching `state`.
  */
 export async function browserSignIn(options: BrowserSignInOptions): Promise<AuthorizationCode> {
+  // Checked before anything else: this URL goes to the OS URL handler, which launches any registered scheme.
+  requireSecureUrl(options.authorizationEndpoint, "The authorization endpoint");
   const pkce = createPkce();
   const { server, port } = await listenOnFirstFreePort(options.ports);
   const redirectUri = `http://${options.redirectHost}:${port}/callback`;
@@ -105,8 +108,12 @@ export async function browserSignIn(options: BrowserSignInOptions): Promise<Auth
   }
 }
 
-/** Open a URL in the user's default browser. */
+/**
+ * Open a URL in the user's default browser. Only https, or http on a loopback host, ever reaches the OS
+ * handler: `file:` and custom schemes would launch something other than a browser.
+ */
 export const openInBrowser: OpenUrl = (url) => {
+  requireSecureUrl(url, "The sign-in URL");
   // rundll32 avoids cmd.exe, which would interpret the '&' in the query string.
   const [command, args] = process.platform === "win32"
     ? ["rundll32", ["url.dll,FileProtocolHandler", url]]

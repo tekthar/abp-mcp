@@ -6,6 +6,24 @@ from the `AbpMcp` NuGet package, with tags `bridge-vX.Y.Z`.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Security
+
+- **Discovered OAuth URLs now follow the same https rule as the profile's URLs**
+  ([GHSA-834p-c9gj-q699](https://github.com/tekthar/abp-mcp/security/advisories/GHSA-834p-c9gj-q699)). Before, only a
+  profile's `url` and `auth.authority` were checked. The `resource_metadata` URL from the host's 401 challenge,
+  `authorization_servers[0]`, and the `token_endpoint`, `authorization_endpoint` and `revocation_endpoint` from the
+  authorization server's metadata were used as given. A malicious or compromised host could have them receive a
+  password, refresh token or client secret over plain http, or have a `file:` or custom-scheme URL passed to the OS
+  URL handler. Each of these URLs must now be https, or http on a loopback host, and the bridge refuses anything else
+  with an error naming the field. In addition:
+  - The browser opener refuses every URL that is not https (or http on loopback) before it reaches the OS handler.
+  - The protected-resource metadata's `resource` must match the profile's URL (same origin, same path or a parent
+    path; RFC 9728 section 3.3), and a document without `resource` is refused.
+  - The authorization server metadata's `issuer` must match the issuer it was fetched for (RFC 8414 section 3.3).
+  - Token and revocation requests no longer follow redirects, so credentials cannot be redirected elsewhere.
+
 ## [0.2.0] — 2026-11-06
 
 ### Changed
