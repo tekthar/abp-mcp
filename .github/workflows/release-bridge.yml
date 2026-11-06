@@ -24,13 +24,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
+      # No dependency cache: a job that publishes should not restore files another run wrote.
       - name: Setup Node 22
         uses: actions/setup-node@v7
         with:
           node-version: 22
           registry-url: https://registry.npmjs.org
-          cache: npm
-          cache-dependency-path: bridge/package-lock.json
 
       - name: Check the tag matches package.json
         id: version
@@ -55,11 +54,9 @@ jobs:
       - name: Upgrade npm
         run: npm install -g npm@11
 
-      # With a trusted publisher configured on npmjs.com for this workflow, npm authenticates through OIDC.
-      # For the very first publish (before the package exists to configure one), set the NPM_TOKEN secret.
+      # npm authenticates through trusted publishing (OIDC): abp-mcp on npmjs.com trusts this workflow file in
+      # tekthar/abp-mcp. No npm token is stored anywhere.
       - name: Publish to npm
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: npm publish --provenance --access public
 
       - name: Build the Claude Desktop extension (.mcpb)

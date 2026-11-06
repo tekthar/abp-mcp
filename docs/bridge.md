@@ -131,9 +131,9 @@ The bridge is versioned separately from the NuGet package.
    provenance, builds the Claude Desktop extension, and creates a GitHub Release with the `.mcpb` attached and the
    changelog section as notes.
 
-npm publishing uses trusted publishing (OIDC, no long-lived token): on npmjs.com, add a trusted publisher for the
-package with repository `tekthar/abp-mcp` and workflow `release-bridge.yml`. npm only allows that once the package
-exists, so the very first release needs an `NPM_TOKEN` repository secret (an automation token); remove it afterwards.
+npm publishing uses trusted publishing (OIDC): `abp-mcp` on npmjs.com trusts the workflow `release-bridge.yml` in
+`tekthar/abp-mcp`, so no npm token is stored in the repository or anywhere else. If the workflow file is renamed or
+moved, update the trusted publisher in the package's settings on npmjs.com before the next release.
 
 ## Developing
 
