@@ -27,6 +27,9 @@ npx -y abp-mcp install staging --claude-code
 
 You need Node.js 22 or later. Nothing else: `npx` fetches the bridge on first use.
 
+The app should run **AbpMcp 0.4.1 or later**. With 0.4.0 and earlier, one tool that requires a permission the app
+does not define makes `tools/list` fail (`-32603`) for everyone; the bridge's error and `doctor` point this out.
+
 **Claude Code**: add a profile, sign in, then `install <profile> --claude-code` (runs `claude mcp add` for you;
 `--scope user|project|local`, default `user`).
 
@@ -125,9 +128,12 @@ permissions in the app are what protect its data, through the bridge or not.
 - **It never widens access.** Every request carries your token; the app's `[Authorize]`, `[McpTool]` opt-in and kill
   switch still decide everything.
 - **It never replays a call.** A request is sent again only when the app refused it before running anything: a 401
-  (after renewing the token) or a 404 for an expired session (after reconnecting). If the connection fails after a
+  (after renewing the token), a 404 for an expired session (after reconnecting), or a session that could not be
+  opened before the call was sent (one more try). If the connection fails after a
   `tools/call` was sent, Claude gets `BRIDGE_CALL_OUTCOME_UNKNOWN` ("it may have run") instead of a retry.
 - **It never logs secrets.** Tokens, passwords, codes and client secrets are masked in every log line, debug included.
+  A password or client secret is masked whatever its length (one shorter than six characters wherever it stands on
+  its own, so it does not mask parts of other words).
 
 The app's own errors (`[FORBIDDEN] ...`, `[VALIDATION_ERROR] ...`, your business codes) reach Claude unchanged. The
 bridge's own start with `BRIDGE_`:
@@ -148,7 +154,7 @@ bridge's own start with `BRIDGE_`:
 | `login <profile> [--save-password \| --save-secret]` | Signs in now and keeps the sign-in. |
 | `logout <profile>` | Revokes and forgets the stored sign-in, saved password and any sign-in pause. |
 | `profiles list \| add <name> \| remove <name>` | Edits `profiles.json`. `add` asks for what its flags don't give. |
-| `doctor <profile> [--tools]` | Checks each step (reach the app, authorization server, sign-in, `tools/list`, `_discover`) and stops at the first failure with the fix. `--tools` adds the filtered tool count and an estimate of the context it costs. |
+| `doctor <profile> [--tools]` | Checks each step (reach the app, its OAuth metadata, authorization server, sign-in pause with the time left, sign-in, `tools/list`, the app's instructions, tools with undefined permissions from `_explain`, `_discover`) and stops at the first failure with the fix. `--tools` adds the filtered tool count and an estimate of the context it costs. |
 | `install <profile> --claude-code [--scope user\|project\|local] [--name <name>]` | Registers the profile with Claude Code. |
 | `install <profile> --claude-desktop [--name <name>]` | Adds the profile to Claude Desktop's config. |
 

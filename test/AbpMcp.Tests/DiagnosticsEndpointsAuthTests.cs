@@ -43,6 +43,35 @@ public class DiagnosticsEndpointsAuthTests
             because: "the diagnostic endpoints must mirror the MCP endpoint's auth posture");
     }
 
+    [Fact]
+    public void Map_WithPolicy_RequiresThatPolicyOnBothEndpoints()
+    {
+        var endpoints = BuildRouteBuilder();
+
+        AbpMcpDiagnosticsEndpoints.Map(endpoints, "/mcp", requireAuthorization: true, authorizationPolicy: "McpOnly");
+
+        var routes = endpoints.DataSources.SelectMany(d => d.Endpoints).OfType<RouteEndpoint>().ToArray();
+        routes.Should().HaveCount(2);
+        foreach (var route in routes)
+        {
+            route.Metadata.OfType<IAuthorizeData>().Select(a => a.Policy).Should().Equal(
+                ["McpOnly"],
+                because: "the diagnostics endpoints must never be looser than the MCP endpoint's policy");
+        }
+    }
+
+    [Fact]
+    public void Map_WithPolicy_ButNoAuthorization_StaysAnonymous()
+    {
+        var endpoints = BuildRouteBuilder();
+
+        AbpMcpDiagnosticsEndpoints.Map(endpoints, "/mcp", requireAuthorization: false, authorizationPolicy: "McpOnly");
+
+        endpoints.DataSources.SelectMany(d => d.Endpoints)
+            .SelectMany(e => e.Metadata.OfType<IAuthorizeData>())
+            .Should().BeEmpty(because: "AllowAnonymous wins over AuthorizationPolicy");
+    }
+
     private static TestEndpointRouteBuilder BuildRouteBuilder()
     {
         var services = new ServiceCollection();

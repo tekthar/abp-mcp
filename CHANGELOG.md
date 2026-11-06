@@ -6,6 +6,24 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Added
+
+- **`AbpMcp.Abstractions` package** ([#98](https://github.com/tekthar/abp-mcp/issues/98)): the `[McpTool]` and `[McpIgnore]` attributes, with no dependencies. Reference it from your `*.Application` project and `AbpMcp` from the host, so tagging a service no longer brings ASP.NET Core, MVC and the MCP SDK into the Application layer (which could break code such as an ambiguous `IdentityUser`). The attributes keep the `AbpMcp.Attributes` namespace and `AbpMcp` type-forwards them, so existing source and binaries built against 0.4.x keep working. Auto-discovery also finds assemblies that reference only `AbpMcp.Abstractions`.
+- **`AbpMcpOptions.AuthorizationPolicy`** ([#96](https://github.com/tekthar/abp-mcp/issues/96)): one authorization policy for `/mcp`, `/mcp/_discover` and `/mcp/_explain`. The default, `null`, keeps the host's default policy; it is ignored when `AllowAnonymous` is true. Before this, `MapAbpMcp().RequireAuthorization("P")` covered only `/mcp`, and any accepted token could read the tool catalogue from `_discover`. `MapAbpMcp`'s return value is unchanged.
+- **`CONFLICT` tool error** ([#97](https://github.com/tekthar/abp-mcp/issues/97)): a tool whose save loses an optimistic-concurrency race (`AbpDbConcurrencyException`) returns `CONFLICT` with a fixed "Read it again and retry with the new values." message instead of `INTERNAL`. The exception's own message, which can name tables and columns, is never sent.
+- **`AbpMcpOptions.Stateless`** ([#100](https://github.com/tekthar/abp-mcp/issues/100)): runs the MCP transport stateless, so several instances can sit behind a load balancer without session affinity. There is no `tools/list_changed` push in this mode. A host's own `Configure<HttpServerTransportOptions>` still wins; the default stays stateful.
+- **`/mcp/_explain` reports `[McpTool]` services that ABP's api-definition does not describe** ([#101](https://github.com/tekthar/abp-mcp/issues/101)), instead of leaving them out. The usual case is a `[RemoteService(IsEnabled = false)]` service served by a hand-written controller: the reason names the controller and points to the new [hand-written controllers](docs/hand-written-controllers.md) guide. Such services remain unsupported; the guide shows how to expose their JSON-friendly operations through a thin, remoted `[McpTool]` wrapper.
+
+### Changed
+
+- The release and CI workflows pack `AbpMcp.Abstractions` alongside `AbpMcp` and fail if the Abstractions package gains a dependency.
+- The Library sample calls `UseAuthentication()`/`UseAuthorization()`, as a standard ABP host does.
+
+### Documentation
+
+- [MCP OAuth for ABP + OpenIddict](docs/oauth.md) ([#99](https://github.com/tekthar/abp-mcp/issues/99)): letting Claude Code, Claude Desktop and claude.ai connectors sign users in directly (RFC 9728 metadata, a separate MCP audience and scope, OpenIddict resource and client setup, and a deployment checklist).
+- README: "Running more than one instance" (session affinity, `Stateless`, or `ISessionMigrationHandler`) and the error codes an agent sees; DESIGN.md: the error mapping table and the transport section ([#97](https://github.com/tekthar/abp-mcp/issues/97), [#100](https://github.com/tekthar/abp-mcp/issues/100)).
+
 ## [0.4.1] — 2026-11-06
 
 A patch release. Hosts on ABP 10.3 and later boot again, `tools/list_changed` reliably reaches connected agents, one

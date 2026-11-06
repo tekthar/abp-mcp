@@ -15,6 +15,7 @@ public class AbpMcpErrorCodesTests
         AbpMcpErrorCodes.ValidationError.Should().Be("VALIDATION_ERROR");
         AbpMcpErrorCodes.Forbidden.Should().Be("FORBIDDEN");
         AbpMcpErrorCodes.NotFound.Should().Be("NOT_FOUND");
+        AbpMcpErrorCodes.Conflict.Should().Be("CONFLICT");
         AbpMcpErrorCodes.UnknownTool.Should().Be("UNKNOWN_TOOL");
         AbpMcpErrorCodes.Disabled.Should().Be("DISABLED");
         AbpMcpErrorCodes.BusinessError.Should().Be("BUSINESS_ERROR");
@@ -26,6 +27,6 @@ public class AbpMcpErrorCodesTests
     public void EveryCodeIsPinned()
     {
         // A new constant must be added to WireValuesAreStable too.
-        typeof(AbpMcpErrorCodes).GetFields().Should().HaveCount(8);
+        typeof(AbpMcpErrorCodes).GetFields().Should().HaveCount(9);
     }
 }

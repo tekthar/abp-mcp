@@ -11,4 +11,6 @@ public sealed class LedgerDbContext : AbpDbContext<LedgerDbContext>
     }
 
     public DbSet<LedgerEntry> Entries => Set<LedgerEntry>();
+
+    public DbSet<LedgerAccount> Accounts => Set<LedgerAccount>();
 }

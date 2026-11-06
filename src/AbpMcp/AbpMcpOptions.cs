@@ -22,6 +22,31 @@ public sealed class AbpMcpOptions
     public bool AllowAnonymous { get; set; }
 
     /// <summary>
+    /// Name of the ASP.NET Core authorization policy that guards the MCP endpoint and the diagnostics
+    /// endpoints (<c>{Path}/_discover</c> and <c>{Path}/_explain</c>). Default <c>null</c>: all three require
+    /// the host's default policy (any authenticated caller). Set it to restrict MCP to, for example, tokens
+    /// that carry an MCP scope; the diagnostics endpoints always get the same policy, so a token that cannot
+    /// call tools cannot read the tool catalogue either. Any policy the host's
+    /// <c>IAuthorizationPolicyProvider</c> resolves works, including an ABP permission name.
+    /// Ignored when <see cref="AllowAnonymous"/> is true.
+    /// </summary>
+    public string? AuthorizationPolicy { get; set; }
+
+    /// <summary>
+    /// If true, the MCP transport runs stateless: no <c>Mcp-Session-Id</c>, no <c>initialize</c> required, and
+    /// any instance can answer any request, so several instances can sit behind a load balancer without
+    /// session affinity. Default <c>false</c> (stateful sessions). The cost: there is no session to push
+    /// over, so <c>notifications/tools/list_changed</c> (from <c>IAbpMcpToolListChangedNotifier</c> and the
+    /// kill switch) is not sent; agents see the new tool list on their next <c>tools/list</c>.
+    /// </summary>
+    /// <remarks>
+    /// Maps to the MCP SDK's <c>HttpServerTransportOptions.SessionMode</c>. A host's own
+    /// <c>Configure&lt;HttpServerTransportOptions&gt;</c> (in a module that depends on <c>AbpMcpModule</c>)
+    /// still wins over this option.
+    /// </remarks>
+    public bool Stateless { get; set; }
+
+    /// <summary>
     /// Browser origins (<c>scheme://host[:port]</c>, e.g. <c>http://localhost:6274</c> for the MCP Inspector)
     /// allowed to call the MCP and diagnostics endpoints. A request that carries an <c>Origin</c> header not
     /// in this set is refused with 403, as the MCP transport spec requires, which stops a web page from

@@ -1,5 +1,6 @@
 import type { Redactor } from "../redact.js";
 import { OAuthError } from "./errors.js";
+import { InsecureUrlError, normalizeUrl, requireSecureUrl, resourceCovers } from "./url-policy.js";
 
 export type FetchLike = (url: string | URL, init?: RequestInit) => Promise<Response>;
 
@@ -29,6 +30,11 @@ export interface SignInTarget {
   readonly resourceScopes?: readonly string[];
 }
 
+/** The authorization server's metadata names a different issuer than the one it was fetched for. */
+export class IssuerMismatchError extends Error {
+  override readonly name = "IssuerMismatchError";
+}
+
 const DEFAULT_LIFETIME_SECONDS = 3600;
 
 /** POST a grant to the token endpoint. Every secret in the request and the response is registered for redaction. */
@@ -39,12 +45,19 @@ export async function requestToken(
   redactor: Redactor,
   now: () => number = Date.now,
 ): Promise<TokenSet> {
-  for (const key of ["password", "client_secret", "code", "code_verifier", "refresh_token"]) {
+  for (const key of ["password", "client_secret"]) {
+    redactor.addCredential(params[key]);
+  }
+
+  for (const key of ["code", "code_verifier", "refresh_token"]) {
     redactor.add(params[key]);
   }
 
+  requireSecureUrl(tokenEndpoint, "The token endpoint");
+  // A redirect would resend the credentials to wherever it points, so none is followed.
   const response = await fetchImpl(tokenEndpoint, {
     method: "POST",
+    redirect: "error",
     headers: { "content-type": "application/x-www-form-urlencoded", accept: "application/json" },
     body: new URLSearchParams(params).toString(),
   });
@@ -127,9 +140,13 @@ export function parseWwwAuthenticate(header: string): Challenge[] {
 }
 
 /**
- * Find the authorization server for an MCP endpoint. With `authority` set, only its metadata is read.
- * Otherwise the endpoint's 401 challenge names its protected-resource metadata (RFC 9728), which names the
- * authorization server, whose metadata (OpenID Connect discovery, else RFC 8414) gives the endpoints.
+ * Find the authorization server for an MCP endpoint. Every URL taken from the host or the authorization
+ * server must pass the same https rule as the profile's URLs (see `url-policy.ts`), the host's resource
+ * metadata must describe `mcpUrl` (RFC 9728 section 3.3), and the server metadata's issuer must be the
+ * issuer it was fetched for (RFC 8414 section 3.3).
+ *
+ * With `authority` set, only its metadata is read. Otherwise the endpoint's 401 challenge names its
+ * protected-resource metadata (RFC 9728), which names the authorization server, whose metadata (OpenID Connect discovery, else RFC 8414) gives the endpoints.
  */
 export async function discoverSignIn(fetchImpl: FetchLike, mcpUrl: string, authority?: string): Promise<SignInTarget> {
   if (authority) {
@@ -144,15 +161,27 @@ export async function discoverSignIn(fetchImpl: FetchLike, mcpUrl: string, autho
   }
 
   const metadata = await fetchJson(fetchImpl, metadataUrl);
+  const resource = typeof metadata.resource === "string" ? metadata.resource : undefined;
+  if (!resource) {
+    throw new Error(`${metadataUrl} has no resource (RFC 9728 requires it). The bridge will not sign in with it.`);
+  }
+
+  if (!resourceCovers(resource, mcpUrl)) {
+    throw new Error(
+      `The resource metadata at ${metadataUrl} is for '${resource}', not for ${mcpUrl} (RFC 9728 section 3.3). ` +
+      "The bridge will not sign in with it.");
+  }
+
   const servers = Array.isArray(metadata.authorization_servers) ? metadata.authorization_servers : [];
   const issuer = typeof servers[0] === "string" ? servers[0] : undefined;
   if (!issuer) {
     throw new Error(`${metadataUrl} names no authorization server. Set auth.authority in the profile.`);
   }
 
+  requireSecureUrl(issuer, `authorization_servers[0] in ${metadataUrl}`);
   return {
     server: await fetchAuthorizationServer(fetchImpl, issuer),
-    ...(typeof metadata.resource === "string" ? { resource: metadata.resource } : {}),
+    resource,
     ...(isStringArray(metadata.scopes_supported) ? { resourceScopes: metadata.scopes_supported } : {}),
   };
 }
@@ -166,7 +195,7 @@ export async function findResourceMetadataUrl(fetchImpl: FetchLike, mcpUrl: stri
     for (const challenge of parseWwwAuthenticate(header)) {
       const url = challenge.params.resource_metadata;
       if (url) {
-        return new URL(url, mcpUrl).toString();
+        return requireSecureUrl(new URL(url, mcpUrl).toString(), `The resource_metadata URL in the 401 challenge from ${mcpUrl}`);
       }
     }
   }
@@ -187,8 +216,12 @@ export async function findResourceMetadataUrl(fetchImpl: FetchLike, mcpUrl: stri
   return undefined;
 }
 
-/** Read an authorization server's metadata: OpenID Connect discovery first, then RFC 8414. */
+/**
+ * Read an authorization server's metadata: OpenID Connect discovery first, then RFC 8414. The metadata's
+ * issuer must match `issuer`, and every endpoint must pass the https rule.
+ */
 export async function fetchAuthorizationServer(fetchImpl: FetchLike, issuer: string): Promise<AuthorizationServer> {
+  requireSecureUrl(issuer, "The authorization server");
   const base = new URL(issuer);
   const path = base.pathname.replace(/\/+$/, "");
   const candidates = [
@@ -204,14 +237,32 @@ export async function fetchAuthorizationServer(fetchImpl: FetchLike, issuer: str
         throw new Error(`${url} has no token_endpoint.`);
       }
 
+      if (typeof metadata.issuer !== "string" || !sameIssuer(metadata.issuer, issuer)) {
+        throw new IssuerMismatchError(
+          `${url} is for issuer '${String(metadata.issuer)}', not '${issuer}' (RFC 8414 section 3.3). ` +
+          "The bridge will not use it.");
+      }
+
+      const endpoint = (field: string): string | undefined => {
+        const value = metadata[field];
+        return typeof value === "string" ? requireSecureUrl(value, `${field} in ${url}`) : undefined;
+      };
+      const tokenEndpoint = endpoint("token_endpoint")!;
+      const authorizationEndpoint = endpoint("authorization_endpoint");
+      const revocationEndpoint = endpoint("revocation_endpoint");
+
       return {
-        issuer: typeof metadata.issuer === "string" ? metadata.issuer : issuer,
-        tokenEndpoint: metadata.token_endpoint,
-        ...(typeof metadata.authorization_endpoint === "string" ? { authorizationEndpoint: metadata.authorization_endpoint } : {}),
-        ...(typeof metadata.revocation_endpoint === "string" ? { revocationEndpoint: metadata.revocation_endpoint } : {}),
+        issuer: metadata.issuer,
+        tokenEndpoint,
+        ...(authorizationEndpoint ? { authorizationEndpoint } : {}),
+        ...(revocationEndpoint ? { revocationEndpoint } : {}),
         ...(isStringArray(metadata.scopes_supported) ? { scopesSupported: metadata.scopes_supported } : {}),
       };
     } catch (error) {
+      if (error instanceof InsecureUrlError || error instanceof IssuerMismatchError) {
+        throw error;
+      }
+
       lastError = error;
     }
   }
@@ -253,6 +304,15 @@ async function fetchJson(fetchImpl: FetchLike, url: string): Promise<Record<stri
   }
 
   return body as Record<string, unknown>;
+}
+
+/** Issuers compare as identical URLs; a trailing slash alone does not make them differ. */
+function sameIssuer(actual: string, expected: string): boolean {
+  try {
+    return normalizeUrl(actual) === normalizeUrl(expected);
+  } catch {
+    return false;
+  }
 }
 
 function isStringArray(value: unknown): value is string[] {

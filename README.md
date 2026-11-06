@@ -50,9 +50,19 @@ unit of work, feature checks and audit logging as your REST endpoint.
 
 ## Install
 
+In a layered ABP solution, the attributes and the server go in different projects:
+
 ```bash
-dotnet add package AbpMcp
+# *.Application: the [McpTool] and [McpIgnore] attributes only, with no dependencies
+dotnet add src/MyApp.Application package AbpMcp.Abstractions
+
+# *.HttpApi.Host (or your single-project app): the MCP server
+dotnet add src/MyApp.HttpApi.Host package AbpMcp
 ```
+
+`AbpMcp.Abstractions` keeps ASP.NET Core, MVC and the MCP SDK out of your Application layer. `AbpMcp` depends on it,
+so a single-project app only needs `AbpMcp`. Code built against an earlier `AbpMcp`, with the attributes in
+`AbpMcp.dll`, keeps working: `AbpMcp` forwards them.
 
 Requires .NET 10 and ABP Framework 10.1 or later. (`0.3.0-alpha` is the last release for .NET 9 / ABP 9.2.)
 
@@ -92,8 +102,8 @@ Each public method becomes a tool named `Service_Method`, so `ProductAppService.
 `[McpTool]` on a single method exposes just that method, and `[McpIgnore]` hides one (also when declared on the
 interface).
 
-No assembly registration is needed: abp-mcp scans the module graph for assemblies that reference it and declare
-`[McpTool]` services. To choose assemblies yourself, turn discovery off and register them:
+No assembly registration is needed: abp-mcp scans the module graph for assemblies that reference `AbpMcp` or
+`AbpMcp.Abstractions` and declare `[McpTool]` services. To choose assemblies yourself, turn discovery off and register them:
 
 ```csharp
 Configure<AbpMcpOptions>(opts =>
@@ -102,6 +112,12 @@ Configure<AbpMcpOptions>(opts =>
     opts.ExposedAssemblies.Create(typeof(MyAppApplicationModule).Assembly);
 });
 ```
+
+An app service ABP serves through a hand-written controller (`[RemoteService(IsEnabled = false)]` plus a controller
+in `*.HttpApi`, typically for file uploads or custom routes) cannot be a tool: ABP's api-definition describes the
+controller, not the service. `/mcp/_explain` lists such a service and says why. Wrap its JSON-friendly operations in a
+thin, remoted `[McpTool]` app service instead; see
+[hand-written controllers](https://github.com/tekthar/abp-mcp/blob/main/docs/hand-written-controllers.md).
 
 ### 3. Connect an agent
 
@@ -112,6 +128,10 @@ claude mcp add --transport http my-app https://your-host/mcp --header "Authoriza
 ```
 
 Agents call your tools with the same bearer tokens your ABP identity server issues to every other client.
+
+**Letting Claude sign users in directly.** Claude Code, Claude Desktop and claude.ai connectors can run the browser
+sign-in themselves when your host publishes MCP OAuth metadata. [MCP OAuth for ABP + OpenIddict](https://github.com/tekthar/abp-mcp/blob/main/docs/oauth.md)
+sets up the API host and the AuthServer, keeps MCP tokens apart from REST tokens, and ends with a checklist.
 
 **Signing in as yourself, without pasting tokens.** The [abp-mcp bridge](https://github.com/tekthar/abp-mcp/tree/main/bridge)
 runs on each user's machine: it signs them in through your existing OpenIddict clients (browser sign-in, or a password
@@ -283,6 +303,17 @@ sequenceDiagram
 token issued for tenant `T` calls into tenant `T`'s data, and header, cookie or route tenant resolvers work as for any
 ABP endpoint. Cross-tenant impersonation is deliberately not supported.
 
+By default `/mcp`, `/mcp/_discover` and `/mcp/_explain` require the host's default policy, so any authenticated caller
+passes. To let only some tokens reach MCP, for example those carrying an MCP scope, name a policy. It guards all three
+endpoints, so a token that cannot call tools cannot read the tool catalogue either:
+
+```csharp
+Configure<AbpMcpOptions>(opts => opts.AuthorizationPolicy = "McpOnly"); // any policy name, or an ABP permission name
+```
+
+`MapAbpMcp().RequireAuthorization("McpOnly")` is not the same: it covers `/mcp` only. The option is ignored when
+`AllowAnonymous` is true.
+
 ### Browser-based clients
 
 Desktop agents and CLIs send no `Origin` header and connect as they are. A request that carries one, such as the MCP
@@ -312,6 +343,41 @@ Without Setting Management, put it in configuration:
 `{ "Settings": { "AbpMcp.DisabledTools": "Loan_CheckOut,Member_Suspend" } }`. Tenant and user values are ignored.
 
 **In this process only**: add names to `AbpMcpOptions.DisabledTools`. A tool listed in either place is disabled.
+
+### Running more than one instance
+
+MCP sessions are stateful by default, and a session lives in the memory of the instance that created it. Behind a
+load balancer without session affinity, the next request often lands on another instance, which does not know the
+`Mcp-Session-Id` and answers `404`. Clients see intermittent "session not found" failures. Pick one of:
+
+| Option | Cost |
+|---|---|
+| Session affinity at the load balancer | Infrastructure work; a session dies with its instance |
+| `AbpMcpOptions.Stateless = true` | No server push: `tools/list_changed` from `IAbpMcpToolListChangedNotifier` and the kill switch is not pushed to connected agents. They see the new list on their next `tools/list`. |
+| The SDK's `ISessionMigrationHandler` (`HttpServerTransportOptions`) | Stateful, with sessions recoverable across instances, but the host has to store session state somewhere shared |
+
+```csharp
+Configure<AbpMcpOptions>(opts => opts.Stateless = true); // any instance answers any request; no initialize needed
+```
+
+`Stateless` sets the MCP SDK's `HttpServerTransportOptions.SessionMode`. If your module configures
+`HttpServerTransportOptions` itself, that configuration wins.
+
+### Errors the agent sees
+
+A failed tool call returns `isError: true` with `[CODE] message`, so an agent can tell "fix the input" from "retry"
+from "give up". The codes are stable (`AbpMcpErrorCodes`):
+
+| Raised by your service | Code |
+|---|---|
+| `AbpValidationException`, or arguments that do not match the schema | `VALIDATION_ERROR`, with each member's error |
+| `AbpAuthorizationException`, or a failed permission, role or feature check | `FORBIDDEN` |
+| `EntityNotFoundException` | `NOT_FOUND`: `There is no Book with id = …` |
+| `AbpDbConcurrencyException` (the record changed since it was read; REST answers `409`) | `CONFLICT`: `The record was changed by someone else since it was read. Read it again and retry with the new values.` |
+| `BusinessException` / `UserFriendlyException` | its own code, e.g. `LIBRARY:MEMBER_SUSPENDED` (`BUSINESS_ERROR` if it has none) |
+| The call was cancelled | `CANCELLED` |
+| A disabled tool, or an unknown tool name | `DISABLED`, `UNKNOWN_TOOL` |
+| Anything else | `INTERNAL`: `An internal error occurred.` Details are logged, never sent. |
 
 ## Everything else
 
@@ -344,6 +410,8 @@ Every bug fix ships with a test that would have caught it, and CodeQL scans ever
 | Guide | What it covers |
 |---|---|
 | [Dynamic add-ins](https://github.com/tekthar/abp-mcp/blob/main/docs/dynamic-addins.md) | `IAbpMcpAddin`, dynamic tools, enriching tools, changing the tool set at runtime |
+| [MCP OAuth for ABP + OpenIddict](https://github.com/tekthar/abp-mcp/blob/main/docs/oauth.md) | Letting Claude sign users in directly: protected-resource metadata, a separate audience for MCP tokens, the OpenIddict resource and client, and a deployment checklist |
+| [Hand-written controllers](https://github.com/tekthar/abp-mcp/blob/main/docs/hand-written-controllers.md) | Services served by a hand-written controller (`[RemoteService(IsEnabled = false)]`): why they are not tools, and the wrapper pattern |
 | [The abp-mcp bridge](https://github.com/tekthar/abp-mcp/blob/main/docs/bridge.md) | Connecting Claude Code and Claude Desktop as the signed-in user: the OpenIddict client, token lifetimes, retries |
 | [Design](https://github.com/tekthar/abp-mcp/blob/main/DESIGN.md) | Premises, the approaches considered, and what is deliberately out of scope |
 | [Changelog](https://github.com/tekthar/abp-mcp/blob/main/CHANGELOG.md) | What each release changed |

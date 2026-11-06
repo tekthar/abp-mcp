@@ -4,6 +4,7 @@ import type { AddressInfo } from "node:net";
 import type { Logger } from "../log.js";
 import { NotSignedInError, OAuthError } from "./errors.js";
 import { createPkce } from "./pkce.js";
+import { requireSecureUrl } from "./url-policy.js";
 
 export type OpenUrl = (url: string) => void | Promise<void>;
 
@@ -36,8 +37,10 @@ const DEFAULT_TIMEOUT_MS = 5 * 60 * 1000;
  * (RFC 8252). Resolves with the code once the browser comes back with the matching `state`.
  */
 export async function browserSignIn(options: BrowserSignInOptions): Promise<AuthorizationCode> {
+  // Checked before anything else: this URL goes to the OS URL handler, which launches any registered scheme.
+  requireSecureUrl(options.authorizationEndpoint, "The authorization endpoint");
   const pkce = createPkce();
-  const { server, port } = await listenOnFirstFreePort(options.ports);
+  const { server, port } = await listenOnFirstFreePort(options.ports, options.redirectHost);
   const redirectUri = `http://${options.redirectHost}:${port}/callback`;
 
   const authorize = new URL(options.authorizationEndpoint);
@@ -105,8 +108,12 @@ export async function browserSignIn(options: BrowserSignInOptions): Promise<Auth
   }
 }
 
-/** Open a URL in the user's default browser. */
+/**
+ * Open a URL in the user's default browser. Only https, or http on a loopback host, ever reaches the OS
+ * handler: `file:` and custom schemes would launch something other than a browser.
+ */
 export const openInBrowser: OpenUrl = (url) => {
+  requireSecureUrl(url, "The sign-in URL");
   // rundll32 avoids cmd.exe, which would interpret the '&' in the query string.
   const [command, args] = process.platform === "win32"
     ? ["rundll32", ["url.dll,FileProtocolHandler", url]]
@@ -117,16 +124,23 @@ export const openInBrowser: OpenUrl = (url) => {
   child.unref();
 };
 
-async function listenOnFirstFreePort(ports: readonly number[]): Promise<{ server: http.Server; port: number }> {
+/**
+ * Listen for the callback on the first free port. With `localhost` in the redirect URI, the browser may resolve
+ * it to `::1` and not fall back to IPv4, so the same port is also opened on `::1` and its requests handed to the
+ * returned server. A machine without IPv6 just skips that; a port taken on `::1` moves on to the next port.
+ */
+export async function listenOnFirstFreePort(ports: readonly number[], redirectHost: "127.0.0.1" | "localhost" = "127.0.0.1"): Promise<{ server: http.Server; port: number }> {
   let lastError: unknown;
   for (const port of ports) {
     const server = http.createServer();
     try {
-      await new Promise<void>((resolve, reject) => {
-        server.once("error", reject);
-        server.listen(port, "127.0.0.1", () => resolve());
-      });
-      return { server, port: (server.address() as AddressInfo).port };
+      await listen(server, port, "127.0.0.1");
+      const bound = (server.address() as AddressInfo).port;
+      if (redirectHost === "localhost") {
+        await alsoListenOnIpv6(server, bound);
+      }
+
+      return { server, port: bound };
     } catch (error) {
       lastError = error;
       server.close();
@@ -136,6 +150,40 @@ async function listenOnFirstFreePort(ports: readonly number[]): Promise<{ server
   throw new NotSignedInError(
     `None of the browser callback ports (${ports.join(", ")}) is free. Close what uses them or add another port ` +
     "to auth.callbackPorts (and register its redirect URI with the client).", { cause: lastError });
+}
+
+function listen(server: http.Server, port: number, host: string): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(port, host, () => {
+      server.off("error", reject);
+      resolve();
+    });
+  });
+}
+
+const NO_IPV6 = new Set(["EADDRNOTAVAIL", "EAFNOSUPPORT"]);
+
+async function alsoListenOnIpv6(primary: http.Server, port: number): Promise<void> {
+  const ipv6 = http.createServer((request, response) => primary.emit("request", request, response));
+  try {
+    await listen(ipv6, port, "::1");
+  } catch (error) {
+    ipv6.close();
+    if (NO_IPV6.has((error as { code?: unknown }).code as string)) {
+      return;
+    }
+
+    throw error;
+  }
+
+  // browserSignIn closes the primary server when it is done; take the IPv6 listener down with it.
+  const close = primary.close.bind(primary);
+  primary.close = ((callback?: (error?: Error) => void) => {
+    ipv6.close();
+    ipv6.closeAllConnections();
+    return close(callback);
+  }) as typeof primary.close;
 }
 
 function finish(response: http.ServerResponse, status: number, message: string): void {

@@ -1,6 +1,6 @@
 import { parseArgs } from "node:util";
 import { doctor } from "./commands/doctor.js";
-import { installClaudeCode, installClaudeDesktop } from "./commands/install.js";
+import { CLAUDE_CODE_SCOPES, installClaudeCode, installClaudeDesktop, isClaudeCodeScope } from "./commands/install.js";
 import { login, logout } from "./commands/login.js";
 import { addProfile, listProfiles, removeProfile } from "./commands/profiles.js";
 import { runStdio } from "./commands/run.js";
@@ -146,7 +146,12 @@ export async function main(argv: string[], io: Io = terminalIo, env: NodeJS.Proc
         throw new UsageError(`'${profile}' is not a profile in ${profilesPath(env)}, or '${name}' is not a valid name (letters, digits, '.', '_', '-').`);
       }
       if (values["claude-code"]) {
-        return installClaudeCode(profile, { name, scope: values.scope ?? "user" }, io) ? 0 : 1;
+        const scope = values.scope ?? "user";
+        if (!isClaudeCodeScope(scope)) {
+          throw new UsageError(`'${scope}' is not a Claude Code scope: use ${CLAUDE_CODE_SCOPES.join(", ")}.`);
+        }
+
+        return installClaudeCode(profile, { name, scope }, io) ? 0 : 1;
       }
 
       if (values["claude-desktop"]) {

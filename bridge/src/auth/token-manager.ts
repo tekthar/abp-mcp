@@ -34,7 +34,8 @@ export interface TokenManagerOptions {
  */
 export class TokenManager {
   private current?: { readonly token: string; readonly expiresAt: number };
-  private inflight?: Promise<string>;
+  /** The attempt running now; `interactive` says whether it may open the browser. */
+  private inflight?: { readonly interactive: boolean; readonly promise: Promise<string> };
   private target?: Promise<SignInTarget>;
   private readonly fetch: FetchLike;
   private readonly env: NodeJS.ProcessEnv;
@@ -68,10 +69,33 @@ export class TokenManager {
       return this.current.token;
     }
 
-    this.inflight ??= this.acquire(options.interactive).finally(() => {
-      this.inflight = undefined;
-    });
-    return this.inflight;
+    const running = this.inflight;
+    if (running && !running.interactive && options.interactive && this.profile.auth.type === "browser") {
+      // A non-interactive attempt fails with NotSignedInError where this caller would open the browser: wait for
+      // it (it may still renew silently), then start, or join, an interactive attempt.
+      return running.promise.catch((error: unknown) => {
+        if (error instanceof NotSignedInError) {
+          return this.getAccessToken({ interactive: true });
+        }
+
+        throw error;
+      });
+    }
+
+    if (running) {
+      return running.promise;
+    }
+
+    const attempt = {
+      interactive: options.interactive,
+      promise: this.acquire(options.interactive).finally(() => {
+        if (this.inflight === attempt) {
+          this.inflight = undefined;
+        }
+      }),
+    };
+    this.inflight = attempt;
+    return attempt.promise;
   }
 
   /** True when a token is cached and not about to expire. Never waits, never signs in. */
@@ -114,7 +138,7 @@ export class TokenManager {
 
   /** Sign in with a password the user just typed (`login`), optionally saving it to the OS keychain. */
   async signInWithPassword(password: string, save: boolean): Promise<void> {
-    this.options.redactor.add(password);
+    this.options.redactor.addCredential(password);
     this.current = undefined;
     await this.passwordGrant(password);
     if (save) {
@@ -124,7 +148,7 @@ export class TokenManager {
 
   /** Sign in with a client secret the user just typed (`login`), optionally saving it to the OS keychain. */
   async signInWithClientSecret(secret: string, save: boolean): Promise<void> {
-    this.options.redactor.add(secret);
+    this.options.redactor.addCredential(secret);
     this.current = undefined;
     await this.clientCredentialsGrant(secret);
     if (save) {
@@ -148,6 +172,7 @@ export class TokenManager {
           this.options.redactor.add(refreshToken);
           await this.fetch(target.server.revocationEndpoint, {
             method: "POST",
+            redirect: "error",
             headers: { "content-type": "application/x-www-form-urlencoded" },
             body: new URLSearchParams({ token: refreshToken, token_type_hint: "refresh_token", client_id: this.profile.auth.clientId ?? "" }).toString(),
           });
@@ -211,24 +236,38 @@ export class TokenManager {
     return this.browserGrant();
   }
 
+  /**
+   * Renew from the stored refresh token. Another bridge on the same profile (Claude Code and Claude Desktop)
+   * may have used and rotated it since this one read it: on a rejection, the vault is read again and a newer
+   * token is tried once. Only the token that was rejected is deleted, never one another process stored since.
+   */
   private async tryRefresh(): Promise<string | undefined> {
-    const refreshToken = await this.options.vault.getRefreshToken(this.profile.name);
-    if (!refreshToken) {
+    const name = this.profile.name;
+    let refreshToken = await this.options.vault.getRefreshToken(name);
+    for (let attempt = 0; refreshToken && attempt < 2; attempt++) {
+      this.options.redactor.add(refreshToken);
+      try {
+        return await this.grant({ grant_type: "refresh_token", refresh_token: refreshToken }, { credentialGrant: false });
+      } catch (error) {
+        if (!(error instanceof OAuthError && error.isCredentialRejection)) {
+          throw error;
+        }
+      }
+
+      const latest = await this.options.vault.getRefreshToken(name);
+      if (attempt === 0 && latest && latest !== refreshToken) {
+        this.options.log.debug(`Another process renewed the sign-in for profile '${name}'; using its refresh token.`);
+        refreshToken = latest;
+        continue;
+      }
+
+      // Expired or revoked; fall through to the profile's other ways of signing in.
+      this.options.log.info(`The stored sign-in for profile '${name}' has expired or was revoked.`);
+      await this.options.vault.deleteRefreshTokenIf(name, refreshToken);
       return undefined;
     }
 
-    try {
-      return await this.grant({ grant_type: "refresh_token", refresh_token: refreshToken }, { credentialGrant: false });
-    } catch (error) {
-      if (error instanceof OAuthError && error.isCredentialRejection) {
-        // Expired or revoked; fall through to the profile's other ways of signing in.
-        this.options.log.info(`The stored sign-in for profile '${this.profile.name}' has expired or was revoked.`);
-        await this.options.vault.deleteRefreshToken(this.profile.name);
-        return undefined;
-      }
-
-      throw error;
-    }
+    return undefined;
   }
 
   private passwordGrant(password: string): Promise<string> {
@@ -338,13 +377,13 @@ export class TokenManager {
 
   private async password(): Promise<string | undefined> {
     const password = this.env.ABP_MCP_PASSWORD || await this.options.vault.getSecret(this.profile.name, "password") || undefined;
-    this.options.redactor.add(password);
+    this.options.redactor.addCredential(password);
     return password;
   }
 
   private async clientSecret(): Promise<string | undefined> {
     const secret = this.env.ABP_MCP_CLIENT_SECRET || await this.options.vault.getSecret(this.profile.name, "client_secret") || undefined;
-    this.options.redactor.add(secret);
+    this.options.redactor.addCredential(secret);
     return secret;
   }
 }

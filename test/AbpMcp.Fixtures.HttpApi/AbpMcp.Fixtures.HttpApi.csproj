@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Stands in for an ABP *.HttpApi project: a hand-written controller serving a
+       [RemoteService(IsEnabled = false)] app service from the Application fixture (#101). -->
+  <PropertyGroup>
+    <RootNamespace>AbpMcp.Fixtures.HttpApi</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AbpMcp.Fixtures.Application\AbpMcp.Fixtures.Application.csproj" />
+    <PackageReference Include="Volo.Abp.AspNetCore.Mvc" Version="$(AbpHostVersion)" />
+  </ItemGroup>
+
+</Project>
