@@ -42,12 +42,13 @@ jobs:
           fi
           echo "version=${version}" >> "$GITHUB_OUTPUT"
 
-      - name: Install, lint, typecheck, test
+      - name: Install, lint, typecheck, test, build
         run: |
           npm ci
           npm run lint
           npm run typecheck
           npm test
+          npm run build
           node scripts/check-pack.mjs
 
       # Trusted publishing needs npm 11.5.1 or later.
@@ -74,6 +75,8 @@ jobs:
             found && /^## \[/ { exit }
             found { print }
           ' CHANGELOG.md > release-notes.md
+          # --latest=false: the repository's "Latest" release stays the NuGet package's.
           gh release create "${GITHUB_REF_NAME}" "abp-mcp-bridge-${VERSION}.mcpb" \
             --title "abp-mcp-bridge ${VERSION}" \
-            --notes-file release-notes.md
+            --notes-file release-notes.md \
+            --latest=false
