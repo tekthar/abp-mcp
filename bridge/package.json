@@ -58,6 +58,7 @@
     "typescript-eslint": "8.72.1"
   },
   "overrides": {
+    "minimatch": "^11.0.1",
     "tmp": "^0.2.6"
   }
 }
