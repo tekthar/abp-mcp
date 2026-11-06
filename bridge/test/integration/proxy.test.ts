@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import { after, afterEach, before, describe, it } from "node:test";
-import { freePort, Harness, textOf, waitFor } from "../helpers/harness.js";
+import { AuditLog } from "../../src/audit.js";
+import type { FetchLike } from "../../src/auth/oauth.js";
+import { freePort, Harness, textOf, waitFor, type HarnessOptions } from "../helpers/harness.js";
 import { McpStub } from "../helpers/mcp-stub.js";
 import { autoConsent, OAuthStub } from "../helpers/oauth-stub.js";
 
@@ -26,19 +28,35 @@ describe("proxy", () => {
     await host?.stop();
   });
 
-  async function start(options: { discover?: boolean; spec?: Record<string, unknown>; env?: NodeJS.ProcessEnv; audit?: boolean; signInWaitMs?: number; openUrl?: (url: string) => Promise<void> } = {}): Promise<Harness> {
+  interface StartOptions {
+    discover?: boolean;
+    spec?: Record<string, unknown>;
+    env?: NodeJS.ProcessEnv;
+    audit?: HarnessOptions["audit"];
+    signInWaitMs?: number;
+    initializeWaitMs?: number;
+    baseFetch?: FetchLike;
+    openUrl?: (url: string) => Promise<void>;
+    /** Runs after the bridge is built and before Claude's initialize. */
+    beforeConnect?: (harness: Harness) => Promise<void>;
+  }
+
+  async function start(options: StartOptions = {}): Promise<Harness> {
     host = await new McpStub({ isValidToken: (token) => oauth.isValid(token), issuer: oauth.issuer, discover: options.discover ?? true }).start();
     harness = new Harness({
+      ...(options.initializeWaitMs !== undefined ? { initializeWaitMs: options.initializeWaitMs } : {}),
+      ...(options.baseFetch ? { baseFetch: options.baseFetch } : {}),
       spec: {
         url: host.url,
         auth: { type: "password", clientId: "MyApp_App", authority: oauth.issuer, scope: "openid offline_access Library", username: "alice" },
         ...options.spec,
       },
       env: options.env ?? { ABP_MCP_PASSWORD: "correct horse" },
-      ...(options.audit ? { audit: true } : {}),
+      ...(options.audit ? { audit: options.audit } : {}),
       ...(options.signInWaitMs !== undefined ? { signInWaitMs: options.signInWaitMs } : {}),
       ...(options.openUrl ? { openUrl: options.openUrl } : {}),
     });
+    await options.beforeConnect?.(harness);
     return harness.connect();
   }
 
@@ -54,9 +72,11 @@ describe("proxy", () => {
 
   it("tells Claude the environment, after the host's own instructions", async () => {
     const bridge = await start({ spec: { stage: "production", notes: "Ask before checkouts.", tools: { preset: "all" } } });
-    await bridge.listToolNames();
     const instructions = bridge.client.getInstructions() ?? "";
-    // The bridge connected lazily here, so the host's instructions are not in this initialize.
+    // Regression (#104): initialize waits for the host session, so it carries the host's own information.
+    assert.equal(bridge.client.getServerVersion()?.name, "Stub.Library");
+    assert.match(instructions, /^Stub library host\.\n/);
+    assert.doesNotMatch(instructions, /instructions are missing/);
     assert.match(instructions, /profile 'test' \(production\)/);
     assert.match(instructions, /PRODUCTION/);
     assert.match(instructions, /Ask before checkouts\./);
@@ -192,19 +212,140 @@ describe("proxy", () => {
     assert.ok((await bridge.listToolNames()).includes("Book_Get"));
   });
 
-  it("browser: a slow sign-in lists nothing, then announces the tools when it completes", async () => {
+  it("browser: a first run signs in during initialize, so the host's instructions reach Claude (#104)", async () => {
+    const authorizes = oauth.authorizeRequests.length;
+    const bridge = await start({
+      spec: { auth: { type: "browser", clientId: "MyApp_Mcp", callbackPorts: [port] } },
+      env: {},
+      initializeWaitMs: 5_000,
+      openUrl: async (url) => {
+        setTimeout(() => void autoConsent(url), 300);
+      },
+    });
+
+    assert.equal(bridge.client.getServerVersion()?.name, "Stub.Library");
+    assert.match(bridge.client.getInstructions() ?? "", /^Stub library host\./);
+    assert.ok((await bridge.listToolNames()).includes("Book_Get"));
+    assert.equal(oauth.authorizeRequests.length - authorizes, 1, "one browser sign-in, shared by initialize and tools/list");
+  });
+
+  it("browser: a sign-in that outlasts initialize gets the bridge's own info, then announces the tools", async () => {
     const bridge = await start({
       spec: { auth: { type: "browser", clientId: "MyApp_Mcp", callbackPorts: [port] } },
       env: {},
       signInWaitMs: 50,
+      initializeWaitMs: 50,
       openUrl: async (url) => {
         setTimeout(() => void autoConsent(url), 400);
       },
     });
 
+    assert.equal(bridge.client.getServerVersion()?.name, "abp-mcp");
+    assert.match(bridge.client.getInstructions() ?? "", /application's own instructions are missing from this session/);
     assert.deepEqual(await bridge.listToolNames(), []);
     await waitFor(() => bridge.toolListChanges.length > 0);
     assert.ok((await bridge.listToolNames()).includes("Book_Get"));
+  });
+
+  it("a host that comes up late still gets its instructions into initialize (#104)", async () => {
+    const hostPort = await freePort();
+    harness = new Harness({
+      spec: {
+        url: `http://127.0.0.1:${hostPort}/mcp`,
+        auth: { type: "password", clientId: "MyApp_App", authority: oauth.issuer, scope: "openid offline_access Library", username: "alice" },
+      },
+      env: { ABP_MCP_PASSWORD: "correct horse" },
+      initializeWaitMs: 10_000,
+    });
+    const late = setTimeout(() => {
+      host = new McpStub({ isValidToken: (token) => oauth.isValid(token), issuer: oauth.issuer, discover: true, port: hostPort });
+      void host.start();
+    }, 700);
+
+    try {
+      const bridge = await harness.connect();
+      assert.equal(bridge.client.getServerVersion()?.name, "Stub.Library");
+      assert.match(bridge.client.getInstructions() ?? "", /^Stub library host\./);
+    } finally {
+      clearTimeout(late);
+    }
+  });
+
+  it("an unreachable host: initialize answers within the wait, with the bridge's own info and a note (#104)", async () => {
+    const started = Date.now();
+    harness = new Harness({
+      spec: { url: `http://127.0.0.1:${await freePort()}/mcp`, auth: { type: "none" } },
+      initializeWaitMs: 300,
+    });
+    const bridge = await harness.connect();
+    assert.ok(Date.now() - started < 2_000, "initialize was not held past the wait");
+    assert.equal(bridge.client.getServerVersion()?.name, "abp-mcp");
+    assert.match(bridge.client.getInstructions() ?? "", /could not reach 127\.0\.0\.1:\d+ .*instructions are missing/);
+  });
+
+  it("a failed audit write never turns a completed call into an error (#102)", async () => {
+    const bridge = await start({
+      // The audit file's path is a directory: every append fails.
+      audit: (file, log) => {
+        fs.mkdirSync(file, { recursive: true });
+        return new AuditLog(file, "test", { log });
+      },
+    });
+
+    assert.equal(textOf(await bridge.call("Book_Delete")), "deleted");
+    assert.equal((await bridge.call("Library_Overview")).isError, true);
+    assert.equal(textOf(await bridge.call("Book_Get")), "Foundation");
+    assert.equal(host.ran("Book_Delete"), 1, "the host ran it exactly once");
+    assert.equal(bridge.lines.filter((line) => / WARN Could not write the audit log/.test(line)).length, 1, "one warning");
+  });
+
+  it("an audit sink that throws never turns a completed call into an error (#102)", async () => {
+    const bridge = await start({
+      audit: () => ({ record: () => { throw new Error("disk full"); } }) as unknown as AuditLog,
+    });
+
+    const result = await bridge.call("Book_Delete");
+    assert.equal(result.isError ?? false, false);
+    assert.equal(textOf(result), "deleted");
+    assert.equal(host.ran("Book_Delete"), 1, "the host ran it exactly once");
+  });
+
+  it("two requests failing on the same expired session reconnect once, not twice (#103)", async () => {
+    let releaseLate!: () => void;
+    const lateGate = new Promise<void>((resolve) => {
+      releaseLate = resolve;
+    });
+    let held = false;
+    let heldResponse!: () => void;
+    const responseHeld = new Promise<void>((resolve) => {
+      heldResponse = resolve;
+    });
+    const bridge = await start({
+      // Hold the first 404 for Book_Get until the other request has reconnected and finished.
+      baseFetch: async (url, init) => {
+        const response = await fetch(url, init);
+        if (!held && response.status === 404 && typeof init?.body === "string" && init.body.includes("\"Book_Get\"")) {
+          held = true;
+          heldResponse();
+          await lateGate;
+        }
+
+        return response;
+      },
+    });
+    await bridge.listToolNames();
+    const opened = host.sessionsOpened;
+    await host.expireSessions();
+
+    const late = bridge.call("Book_Get");
+    await responseHeld;
+    assert.equal(textOf(await bridge.call("Book_Delete")), "deleted");
+    releaseLate();
+    assert.equal(textOf(await late), "Foundation");
+
+    assert.equal(host.sessionsOpened - opened, 1, "the late failure reused the new session instead of replacing it");
+    assert.equal(host.ran("Book_Get"), 1);
+    assert.equal(host.ran("Book_Delete"), 1);
   });
 
   it("browser: an expired stored sign-in does not hold tools/list while the browser is open", async () => {
@@ -212,11 +353,12 @@ describe("proxy", () => {
       spec: { auth: { type: "browser", clientId: "MyApp_Mcp", callbackPorts: [port] } },
       env: {},
       signInWaitMs: 50,
+      initializeWaitMs: 50,
       openUrl: async (url) => {
         setTimeout(() => void autoConsent(url), 400);
       },
+      beforeConnect: async (harness) => harness.vault.setRefreshToken("test", "rt-revoked-long-ago"),
     });
-    await bridge.vault.setRefreshToken("test", "rt-revoked-long-ago");
 
     const started = Date.now();
     assert.deepEqual(await bridge.listToolNames(), []);

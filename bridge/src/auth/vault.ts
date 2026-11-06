@@ -70,6 +70,18 @@ export class CredentialVault {
     await this.file.delete(profile, "refresh_token");
   }
 
+  /**
+   * Delete the stored refresh token only where it still equals `rejected`: compare and delete, so a newer
+   * token that another bridge on the same profile stored in the meantime survives.
+   */
+  async deleteRefreshTokenIf(profile: string, rejected: string): Promise<void> {
+    for (const store of [this.keychain, this.file]) {
+      if (store && await store.get(profile, "refresh_token") === rejected) {
+        await store.delete(profile, "refresh_token");
+      }
+    }
+  }
+
   /** A saved password or client secret. Never read from a file. */
   async getSecret(profile: string, kind: "password" | "client_secret"): Promise<string | null> {
     return (await this.keychain?.get(profile, kind)) ?? null;

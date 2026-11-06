@@ -4,11 +4,9 @@ import { Bridge } from "../bridge.js";
 import type { Runtime } from "../runtime.js";
 import { Upstream } from "../upstream/upstream.js";
 
-const STARTUP_CONNECT_MS = 15_000;
-
 /**
- * Serve the profile over stdio: what Claude starts. The host session is opened up front when no user
- * interaction is needed, so `initialize` can carry the host's own instructions; otherwise it opens lazily.
+ * Serve the profile over stdio: what Claude starts. Claude's `initialize` waits (bounded) for the host session,
+ * so it carries the host's own `serverInfo` and instructions; see {@link Bridge}.
  */
 export async function runStdio(runtime: Runtime): Promise<void> {
   const { profile, tokens, log } = runtime;
@@ -23,18 +21,7 @@ export async function runStdio(runtime: Runtime): Promise<void> {
     onToolListChanged: () => late.bridge?.onUpstreamToolsChanged(),
   });
 
-  if (await tokens.canSignInSilently()) {
-    try {
-      await Promise.race([
-        upstream.connect(),
-        new Promise((_, reject) => setTimeout(() => reject(new Error("timed out")), STARTUP_CONNECT_MS).unref()),
-      ]);
-    } catch (error) {
-      log.warn(`Could not connect to ${profile.url} at startup; will retry on the first request`, error);
-    }
-  }
-
-  const audit = AuditLog.fromEnv(runtime.stateDir, profile.name, runtime.env);
+  const audit = AuditLog.fromEnv(runtime.stateDir, profile.name, runtime.env, log);
   const bridge = new Bridge({ profile, version: runtime.version, tokens, upstream, log, ...(audit ? { audit } : {}) });
   late.bridge = bridge;
 
