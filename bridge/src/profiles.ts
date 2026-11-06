@@ -40,6 +40,18 @@ export interface ToolsConfig {
   readonly deny: readonly string[];
   /** Tools to show even though the preset hides them, e.g. a POST endpoint that only reads. */
   readonly include: readonly string[];
+  /** Gateway mode (#120): list only the pinned tools and let Claude find and call the rest. Off when absent. */
+  readonly gateway?: GatewayConfig;
+}
+
+/**
+ * Gateway mode. Claude sees the `pinned` tools (globs) plus `search_tools`, `describe_tools` and `call_tool`,
+ * and with `code`, `run_code`. Every tool still passes the profile's other filters.
+ */
+export interface GatewayConfig {
+  readonly pinned: readonly string[];
+  /** List `run_code`, which calls several tools from one sandboxed script (#121). */
+  readonly code: boolean;
 }
 
 /** One environment the bridge can connect to. */
@@ -65,7 +77,8 @@ export class ProfileError extends Error {}
 
 const PROFILE_KEYS = new Set(["url", "stage", "auth", "tools", "notes", "timeoutSeconds"]);
 const AUTH_KEYS = new Set(["type", "clientId", "authority", "scope", "username", "callbackPort", "callbackPorts", "redirectHost", "tokenEnv", "tokenFile"]);
-const TOOLS_KEYS = new Set(["preset", "allow", "deny", "include"]);
+const TOOLS_KEYS = new Set(["preset", "allow", "deny", "include", "gateway"]);
+const GATEWAY_KEYS = new Set(["pinned", "code"]);
 
 /** Validate a parsed profiles document and return its profiles, defaults applied. */
 export function parseProfiles(document: unknown): Map<string, Profile> {
@@ -119,10 +132,30 @@ export function parseProfile(name: string, value: unknown): Profile {
       allow: optionalStringArray(toolsSpec.allow, `${where}.tools.allow`),
       deny: optionalStringArray(toolsSpec.deny, `${where}.tools.deny`),
       include: optionalStringArray(toolsSpec.include, `${where}.tools.include`),
+      ...parseGateway(toolsSpec.gateway, `${where}.tools.gateway`),
     },
     ...(spec.notes === undefined ? {} : { notes: requireString(spec.notes, `${where}.notes`) }),
     timeoutSeconds,
   };
+}
+
+/** `true`, or `{ pinned?, code? }`; `false` or absent turns the gateway off. */
+function parseGateway(value: unknown, where: string): { gateway?: GatewayConfig } {
+  if (value === undefined || value === false) {
+    return {};
+  }
+
+  if (value === true) {
+    return { gateway: { pinned: [], code: true } };
+  }
+
+  const spec = asObject(value, where);
+  rejectUnknown(spec, GATEWAY_KEYS, where);
+  if (spec.code !== undefined && typeof spec.code !== "boolean") {
+    throw new ProfileError(`${where}.code must be true or false.`);
+  }
+
+  return { gateway: { pinned: optionalStringArray(spec.pinned, `${where}.pinned`), code: spec.code !== false } };
 }
 
 function parseAuth(value: unknown, where: string): AuthConfig {
@@ -183,6 +216,12 @@ export function profileFromEnv(name: string, env: NodeJS.ProcessEnv): Profile | 
     tools.preset = preset;
   }
 
+  // ABP_MCP_GATEWAY=on, with optional ABP_MCP_GATEWAY_PINNED=a,b* and ABP_MCP_GATEWAY_CODE=off.
+  if (isOn(pick("ABP_MCP_GATEWAY"))) {
+    const pinned = pick("ABP_MCP_GATEWAY_PINNED")?.split(",").map((item) => item.trim()).filter((item) => item !== "") ?? [];
+    tools.gateway = { pinned, code: !isOff(pick("ABP_MCP_GATEWAY_CODE")) };
+  }
+
   const notes = pick("ABP_MCP_NOTES");
   return parseProfile(name, {
     url: env.ABP_MCP_URL,
@@ -191,6 +230,14 @@ export function profileFromEnv(name: string, env: NodeJS.ProcessEnv): Profile | 
     tools,
     ...(notes ? { notes } : {}),
   });
+}
+
+function isOn(value: string | undefined): boolean {
+  return value !== undefined && ["on", "true", "1", "yes"].includes(value.toLowerCase());
+}
+
+function isOff(value: string | undefined): boolean {
+  return value !== undefined && ["off", "false", "0", "no"].includes(value.toLowerCase());
 }
 
 /** Read and validate the profiles file. A missing file is an empty set of profiles. */

@@ -123,6 +123,22 @@ The filter applies to `tools/list` and again to every `tools/call`; a hidden too
 Globs use `*` and `?` and ignore case. The filter is a guardrail for the agent, not a security boundary: your
 permissions in the app are what protect its data, through the bridge or not.
 
+## Large tool sets: gateway mode
+
+An app with hundreds of tools fills Claude's context with their schemas before the conversation starts. With
+`"tools": { "gateway": { "pinned": ["jira_get_issue", "jira_search*"] } }` the bridge lists only the pinned tools,
+plus:
+
+- `search_tools`: find the other tools by keywords (names and one-line descriptions only);
+- `describe_tools`: the arguments of the tools Claude picked;
+- `call_tool`: call any of them;
+- `run_code`: a short JavaScript function that calls several tools and returns only its result. It runs in a
+  WebAssembly (QuickJS) sandbox with no network, file or Node access, and reports every call it made, so a failed
+  run never hides a write that already happened. Turn it off with `"code": false`.
+
+The profile's filter, the read-only preset and the audit log apply to every call, listed or not. This works with any
+MCP host, not only AbpMcp. For the Claude Desktop extension, set "Tool gateway" and "Pinned tools".
+
 ## What the bridge guarantees
 
 - **It never widens access.** Every request carries your token; the app's `[Authorize]`, `[McpTool]` opt-in and kill
@@ -165,6 +181,7 @@ bridge's own start with `BRIDGE_`:
 | `ABP_MCP_PROFILES` | Path of the profiles file. |
 | `ABP_MCP_PASSWORD`, `ABP_MCP_CLIENT_SECRET`, `ABP_MCP_TOKEN` | Credentials, never written anywhere. |
 | `ABP_MCP_URL`, `ABP_MCP_AUTH`, `ABP_MCP_CLIENT_ID`, `ABP_MCP_AUTHORITY`, `ABP_MCP_SCOPE`, `ABP_MCP_USERNAME`, `ABP_MCP_STAGE`, `ABP_MCP_TOOLS_PRESET`, `ABP_MCP_NOTES` | Define the profile without a profiles file (the Claude Desktop extension does this). |
+| `ABP_MCP_GATEWAY=on`, `ABP_MCP_GATEWAY_PINNED=a,b*`, `ABP_MCP_GATEWAY_CODE=off` | Gateway mode for a profile defined by environment variables. |
 | `ABP_MCP_DEBUG=1`, `ABP_MCP_LOG_FILE` | Debug logging to stderr, and optionally a file. |
 | `ABP_MCP_AUDIT=1` | One JSON line per tool call (tool, outcome, duration, error code; never arguments or results) in the bridge's state directory. |
 | `ABP_MCP_KEYCHAIN=off` | Don't use the OS keychain. |

@@ -144,6 +144,33 @@ Production profiles default to the `read-only` preset, which shows only tools ba
 reads each tool's HTTP method from `/mcp/_discover`, which `MapAbpMcp` serves. If `_discover` is unavailable to the
 user, the preset hides every tool rather than guess.
 
+## Gateway mode and `run_code`
+
+`tools.gateway` keeps a large tool set out of Claude's context ({I(120)}, {I(121)}). The bridge lists only the
+`pinned` tools (globs) and four of its own: `search_tools`, `describe_tools`, `call_tool` and, unless `code` is
+`false`, `run_code`. The tools it searches are the ones the profile's filter allows, from the last `tools/list`; the
+host's `tools/list_changed` refreshes them.
+
+- **Search** is keyword ranking with no embeddings: names are split on camelCase, snake_case and dots, a name match
+  outweighs a description match, a word matches its plural, and a result must contain every word of a one- or
+  two-word query (60% of a longer one). Results carry a one-line description and, when the bridge has read the host's
+  `_discover`, the HTTP method.
+- **`call_tool`** takes the same path as a call to a listed tool: the filter (a write tool under the read-only preset
+  is refused locally), the audit log, and the retry rules below.
+- **`run_code`** runs an async JavaScript function in QuickJS compiled to WebAssembly, a fresh runtime per run with
+  no network, file, process or module access. The function reaches the host only through `tools.<name>(args)` (or
+  `tools.call(name, args)`), `tools.search` and `tools.describe`, and every call takes the `call_tool` path. A call
+  resolves to the tool's structured result, or its text parsed as JSON, and throws when the tool reports an error.
+  Limits: 60 seconds for the whole run (an interrupt also stops CPU loops), 50 tool calls, 64 MB of memory, 20,000
+  characters of code. The result is cut to about 24,000 characters, largest values first, and stays valid JSON.
+- **The call journal**: the answer always lists the run's tool calls as `ok`, `error`, `refused` (stopped by the
+  bridge, never sent) or `unknown` (it may have run: the connection broke after it was sent, or the run ended while it
+  was in flight). When a script fails part-way, Claude can see which writes already happened instead of repeating them.
+
+An AbpMcp host can also keep tools out of `tools/list` itself ({I(119)}): its `mcp_search_tools`,
+`mcp_describe_tools` and `mcp_call_tool(s)` are ordinary tools to the bridge, which can pin them or find them by
+search.
+
 ## How the bridge decides to retry
 
 A request is sent again only when the app refused it before running anything:

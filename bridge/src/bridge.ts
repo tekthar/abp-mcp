@@ -21,6 +21,8 @@ import type { Profile } from "./profiles.js";
 import { MayHaveRunError, NotSentError, withListToolsHint } from "./upstream/errors.js";
 import type { HttpMethods, Upstream } from "./upstream/upstream.js";
 import { after, openHostSession } from "./startup.js";
+import type { CodeLimits } from "./gateway/code-mode.js";
+import { Gateway } from "./gateway/gateway.js";
 
 export interface BridgeOptions {
   readonly profile: Profile;
@@ -36,6 +38,8 @@ export interface BridgeOptions {
    * silently, the browser sign-in) so it can carry the host's `serverInfo` and `instructions`.
    */
   readonly initializeWaitMs?: number;
+  /** Limits for `run_code` in gateway mode (tests shorten them). */
+  readonly codeLimits?: Partial<CodeLimits>;
 }
 
 const DEFAULT_SIGN_IN_WAIT_MS = 20_000;
@@ -52,11 +56,23 @@ export class Bridge {
   readonly server: Server;
   private readonly filter: ToolFilter;
   private httpMethods: HttpMethods | undefined;
+  /** The upstream tools the profile allows, from the last `tools/list`; the gateway searches these. */
+  private allowedTools: Tool[] | undefined;
+  private readonly gateway: Gateway | undefined;
   private signIn: Promise<void> | undefined;
   private initialized = false;
 
   constructor(private readonly options: BridgeOptions) {
     this.filter = new ToolFilter(options.profile.tools);
+    const gateway = options.profile.tools.gateway;
+    this.gateway = gateway
+      ? new Gateway(gateway, {
+        tools: () => this.allowedUpstreamTools(),
+        httpMethods: () => this.httpMethods,
+        call: (name, args, signal) => this.callTool(name, args, signal),
+        hostName: new URL(options.profile.url).host,
+      }, options.log, options.codeLimits)
+      : undefined;
     this.server = new Server(
       { name: "abp-mcp", version: options.version },
       { capabilities: { tools: { listChanged: true } }, instructions: buildInstructions(options.profile) },
@@ -75,8 +91,12 @@ export class Bridge {
       return answer;
     });
     this.server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: await this.listTools() }));
-    this.server.setRequestHandler(CallToolRequestSchema, async (request, extra) =>
-      this.callTool(request.params.name, request.params.arguments, extra.signal));
+    this.server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
+      const { name, arguments: args } = request.params;
+      return this.gateway?.handles(name)
+        ? this.gateway.call(name, args, extra.signal)
+        : this.callTool(name, args, extra.signal);
+    });
   }
 
   /** Serve on `transport` (stdio in production). Closing it ends the host session too. */
@@ -90,6 +110,7 @@ export class Bridge {
   /** The host changed its tools: drop what the bridge cached and tell Claude to list again. */
   onUpstreamToolsChanged(): void {
     this.httpMethods = undefined;
+    this.allowedTools = undefined;
     this.notifyToolsChanged();
   }
 
@@ -98,6 +119,25 @@ export class Bridge {
       return [];
     }
 
+    const allowed = await this.fetchAllowedTools();
+    return this.gateway ? this.gateway.list(allowed) : allowed;
+  }
+
+  /** The cached allowed tools, or a fresh list from the host. */
+  private async allowedUpstreamTools(): Promise<Tool[]> {
+    if (this.allowedTools) {
+      return this.allowedTools;
+    }
+
+    if (!(await this.ensureSignedIn())) {
+      throw new NotSignedInError(`Profile '${this.options.profile.name}' is not signed in yet; finish the sign-in in the browser.`);
+    }
+
+    return this.fetchAllowedTools();
+  }
+
+  /** The host's tools, less what the profile's filter hides. */
+  private async fetchAllowedTools(): Promise<Tool[]> {
     let tools: Tool[];
     try {
       tools = await this.options.upstream.listTools();
@@ -109,7 +149,8 @@ export class Bridge {
       throw new McpError(ErrorCode.InternalError, withListToolsHint(userMessage(error, this.options.profile), error));
     }
 
-    return tools.filter((tool) => this.decide(tool.name).visible);
+    this.allowedTools = tools.filter((tool) => this.decide(tool.name).visible);
+    return this.allowedTools;
   }
 
   async callTool(name: string, args: Record<string, unknown> | undefined, signal?: AbortSignal): Promise<CallToolResult> {
@@ -293,6 +334,12 @@ export function buildInstructions(profile: Profile, hostInstructions?: string, o
 
   if (profile.tools.preset === "read-only") {
     lines.push("Only read-only tools are available through this connection.");
+  }
+
+  if (profile.tools.gateway) {
+    lines.push(
+      "Only some of the host's tools are listed. Find the others with search_tools, read their arguments with describe_tools, " +
+      "and call them with call_tool" + (profile.tools.gateway.code ? "; run_code calls several tools from one short script." : "."));
   }
 
   if (profile.auth.type === "browser") {

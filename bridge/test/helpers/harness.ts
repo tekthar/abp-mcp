@@ -1,3 +1,4 @@
+import type { CodeLimits } from "../../src/gateway/code-mode.js";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -64,6 +65,8 @@ export interface HarnessOptions {
   readonly initializeWaitMs?: number;
   /** The fetch under the upstream's authentication, to observe or delay requests to the host. */
   readonly baseFetch?: FetchLike;
+  /** Limits for `run_code` in gateway mode. */
+  readonly codeLimits?: Partial<CodeLimits>;
 }
 
 /** A bridge wired like `runStdio`, with Claude's side as an in-memory MCP client. */
@@ -109,6 +112,7 @@ export class Harness {
       ...(audit ? { audit } : {}),
       ...(options.signInWaitMs !== undefined ? { signInWaitMs: options.signInWaitMs } : {}),
       ...(options.initializeWaitMs !== undefined ? { initializeWaitMs: options.initializeWaitMs } : {}),
+      ...(options.codeLimits ? { codeLimits: options.codeLimits } : {}),
     });
     late.bridge = this.bridge;
   }

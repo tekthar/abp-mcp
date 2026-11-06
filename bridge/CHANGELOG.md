@@ -8,6 +8,20 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Added
+
+- **Gateway mode** ([#120](https://github.com/tekthar/abp-mcp/issues/120)): `tools.gateway` (or `ABP_MCP_GATEWAY=on`) lists only the pinned tools plus
+  `search_tools`, `describe_tools` and `call_tool`, so an app with hundreds of tools no longer fills Claude's context
+  with their schemas. Search is keyword ranking over the tools the profile allows; `call_tool` follows the same
+  filter, read-only preset, audit log and retry rules as a listed tool. Works with any MCP host. The Claude Desktop
+  extension has "Tool gateway" and "Pinned tools" settings.
+- **`run_code`** ([#121](https://github.com/tekthar/abp-mcp/issues/121)): with the gateway on, Claude can run a short JavaScript function that calls several tools
+  and returns only its result. It runs in a QuickJS (WebAssembly) sandbox with no network, file or Node access, under
+  time, memory, call-count and code-size limits, and its result is cut to about 24,000 characters while staying valid
+  JSON. The answer lists every call the script made as ok, error, refused or unknown, so a failed run never hides a
+  write that already happened. New dependencies: `quickjs-emscripten-core` and `@jitl/quickjs-wasmfile-release-sync`
+  (MIT, 0.32.0).
+
 ## [0.5.1] — 2026-11-06
 
 ### Fixed
