@@ -132,7 +132,7 @@ describe("races (#103)", () => {
   });
 
   it("an interactive request during a non-interactive probe opens the browser instead of failing", async () => {
-    const { opened, make } = bridges({ type: "browser", clientId: "MyApp_Mcp", authority: oauth.issuer, callbackPorts: [port] });
+    const { opened, make } = bridges({ type: "browser", clientId: "MyApp_Mcp", authority: oauth.issuer, scope: "openid offline_access Library", callbackPorts: [port] });
     const { tokens } = make();
 
     const probe = tokens.getAccessToken({ interactive: false });
@@ -143,7 +143,7 @@ describe("races (#103)", () => {
   });
 
   it("several interactive requests behind a probe share one browser sign-in", async () => {
-    const { opened, make } = bridges({ type: "browser", clientId: "MyApp_Mcp", authority: oauth.issuer, callbackPorts: [port] });
+    const { opened, make } = bridges({ type: "browser", clientId: "MyApp_Mcp", authority: oauth.issuer, scope: "openid offline_access Library", callbackPorts: [port] });
     const { tokens } = make();
 
     const probe = tokens.getAccessToken({ interactive: false }).catch(() => undefined);

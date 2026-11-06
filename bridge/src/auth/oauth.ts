@@ -28,6 +28,16 @@ export interface SignInTarget {
   readonly resource?: string;
   /** Scopes the host's protected-resource metadata asks for. */
   readonly resourceScopes?: readonly string[];
+  /** Things the user should know about how the target was found, e.g. a pinned authority the host does not list. */
+  readonly notes?: readonly string[];
+}
+
+/** The host's RFC 9728 protected-resource metadata, checked against the MCP URL it was found for. */
+interface ProtectedResource {
+  readonly metadataUrl: string;
+  readonly resource: string;
+  readonly authorizationServers: readonly string[];
+  readonly scopes?: readonly string[];
 }
 
 /** The authorization server's metadata names a different issuer than the one it was fetched for. */
@@ -150,14 +160,76 @@ export function parseWwwAuthenticate(header: string): Challenge[] {
  */
 export async function discoverSignIn(fetchImpl: FetchLike, mcpUrl: string, authority?: string): Promise<SignInTarget> {
   if (authority) {
-    return { server: await fetchAuthorizationServer(fetchImpl, authority) };
+    return discoverWithAuthority(fetchImpl, mcpUrl, authority);
   }
 
-  const metadataUrl = await findResourceMetadataUrl(fetchImpl, mcpUrl);
-  if (!metadataUrl) {
+  const metadata = await readProtectedResource(fetchImpl, mcpUrl);
+  if (!metadata) {
     throw new Error(
       `${mcpUrl} does not advertise OAuth metadata (no resource_metadata in its 401 challenge, no RFC 9728 ` +
       "document). Set auth.authority (and auth.scope) in the profile.");
+  }
+
+  const issuer = metadata.authorizationServers[0];
+  if (!issuer) {
+    throw new Error(`${metadata.metadataUrl} names no authorization server. Set auth.authority in the profile.`);
+  }
+
+  requireSecureUrl(issuer, `authorization_servers[0] in ${metadata.metadataUrl}`);
+  return {
+    server: await fetchAuthorizationServer(fetchImpl, issuer),
+    resource: metadata.resource,
+    ...(metadata.scopes ? { resourceScopes: metadata.scopes } : {}),
+  };
+}
+
+/**
+ * With `auth.authority` set, the authority picks the authorization server, but the host's resource metadata is
+ * still read for the `resource` indicator and the scopes (#117): without them the token carries no API scope or
+ * audience, and the host rejects it. A host without metadata, or with metadata the bridge will not use, signs in
+ * with the authority alone and says so.
+ */
+async function discoverWithAuthority(fetchImpl: FetchLike, mcpUrl: string, authority: string): Promise<SignInTarget> {
+  const server = await fetchAuthorizationServer(fetchImpl, authority);
+  const notes: string[] = [];
+  let metadata: ProtectedResource | undefined;
+  try {
+    metadata = await readProtectedResource(fetchImpl, mcpUrl);
+  } catch (error) {
+    notes.push(`ignored the host's resource metadata: ${(error as Error).message}`);
+  }
+
+  if (!metadata) {
+    if (notes.length === 0) {
+      notes.push("the host advertises no resource metadata, so no resource indicator is sent and the scope must come from auth.scope");
+    }
+
+    return { server, notes };
+  }
+
+  if (!metadata.authorizationServers.some((listed) => sameIssuer(listed, authority))) {
+    notes.push(
+      `auth.authority ${authority} is not among the authorization servers the host lists ` +
+      `(${metadata.authorizationServers.join(", ") || "none"}); tokens from it may be rejected`);
+  }
+
+  return {
+    server,
+    resource: metadata.resource,
+    ...(metadata.scopes ? { resourceScopes: metadata.scopes } : {}),
+    ...(notes.length > 0 ? { notes } : {}),
+  };
+}
+
+/**
+ * The host's protected-resource metadata: located through the 401 challenge or the RFC 9728 well-known
+ * locations, and refused unless its `resource` covers `mcpUrl` (RFC 9728 section 3.3). `undefined` when the
+ * host advertises none.
+ */
+async function readProtectedResource(fetchImpl: FetchLike, mcpUrl: string): Promise<ProtectedResource | undefined> {
+  const metadataUrl = await findResourceMetadataUrl(fetchImpl, mcpUrl);
+  if (!metadataUrl) {
+    return undefined;
   }
 
   const metadata = await fetchJson(fetchImpl, metadataUrl);
@@ -172,17 +244,14 @@ export async function discoverSignIn(fetchImpl: FetchLike, mcpUrl: string, autho
       "The bridge will not sign in with it.");
   }
 
-  const servers = Array.isArray(metadata.authorization_servers) ? metadata.authorization_servers : [];
-  const issuer = typeof servers[0] === "string" ? servers[0] : undefined;
-  if (!issuer) {
-    throw new Error(`${metadataUrl} names no authorization server. Set auth.authority in the profile.`);
-  }
-
-  requireSecureUrl(issuer, `authorization_servers[0] in ${metadataUrl}`);
+  const servers = Array.isArray(metadata.authorization_servers)
+    ? metadata.authorization_servers.filter((server): server is string => typeof server === "string")
+    : [];
   return {
-    server: await fetchAuthorizationServer(fetchImpl, issuer),
+    metadataUrl,
     resource,
-    ...(isStringArray(metadata.scopes_supported) ? { resourceScopes: metadata.scopes_supported } : {}),
+    authorizationServers: servers,
+    ...(isStringArray(metadata.scopes_supported) ? { scopes: metadata.scopes_supported } : {}),
   };
 }
 

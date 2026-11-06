@@ -8,6 +8,33 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [0.5.1] — 2026-11-06
+
+### Fixed
+
+- **Windows: refresh tokens longer than Credential Manager allows are kept in the file store** ([#116](https://github.com/tekthar/abp-mcp/issues/116)).
+  Credential Manager holds at most 2560 bytes per secret (1280 characters as UTF-16), and ABP's OpenIddict refresh
+  tokens are longer. The bridge only warned and dropped the token, so every new process, including the one Claude
+  starts, was "not signed in". It now keeps such a token in the owner-only file store, removes any older keychain
+  entry, and says once where it went. `login` and `doctor` name the store the profile's token is actually in.
+- **`login` no longer blames the server for a token it could not store** ([#116](https://github.com/tekthar/abp-mcp/issues/116)). It says "the server issued a
+  refresh token, but it could not be stored (…)" instead of "the server issued no refresh token".
+- **`auth.authority` no longer drops the scope and the resource** ([#117](https://github.com/tekthar/abp-mcp/issues/117)). With an authority set, the bridge
+  skipped the host's RFC 9728 metadata, so the sign-in asked for no scope and sent no `resource`. The token then had
+  no audience the host accepts and no refresh token. The authority now only chooses the authorization server. The
+  scopes, plus `offline_access`, and the `resource` still come from the host's metadata, and the bridge warns when the
+  host does not list the authority.
+- **No sign-in without a scope** ([#117](https://github.com/tekthar/abp-mcp/issues/117)). With no `auth.scope` and none advertised, `login` stops before opening
+  the browser, and `doctor` fails the "Authorization server" step, both saying to set `auth.scope`.
+- **A rejected token is reported as one** ([#117](https://github.com/tekthar/abp-mcp/issues/117)). A 401 for a token obtained moments ago now reads "the host
+  rejected the access token just issued (HTTP 401: …): check auth.scope and the token's audience" instead of "not
+  signed in". `login`'s "listing tools failed" message no longer ends in a doubled period.
+
+### Changed
+
+- `profiles add` does not ask for an authorization server URL when the host publishes its sign-in metadata. For a
+  host that publishes none, the prompt says that is why it asks ([#117](https://github.com/tekthar/abp-mcp/issues/117)).
+
 ## [0.5.0] — 2026-11-06
 
 A security release: upgrade from 0.2.0 or earlier (and from the deprecated `@tekthar/abp-mcp-bridge`). The version

@@ -67,7 +67,9 @@ describe("proxy", () => {
     const result = await bridge.call("Book_Get");
     assert.equal(textOf(result), "Foundation");
     assert.equal(host.ran("Book_Get"), 1);
-    assert.ok(host.authorizations.every((value) => value?.startsWith("Bearer at-")), "every request carried the user's token");
+    // With auth.authority set, discovery still sends one unauthenticated probe for the host's resource metadata (#117).
+    assert.ok(host.authorizations.filter((value) => value === undefined).length <= 1, "only the discovery probe went without a token");
+    assert.ok(host.authorizations.filter((value) => value !== undefined).every((value) => value?.startsWith("Bearer at-")), "every MCP request carried the user's token");
   });
 
   it("tells Claude the environment, after the host's own instructions", async () => {
@@ -389,7 +391,7 @@ describe("proxy", () => {
       openUrl: async (url) => {
         setTimeout(() => void autoConsent(url), 400);
       },
-      beforeConnect: async (harness) => harness.vault.setRefreshToken("test", "rt-revoked-long-ago"),
+      beforeConnect: async (harness) => { await harness.vault.setRefreshToken("test", "rt-revoked-long-ago"); },
     });
 
     const started = Date.now();

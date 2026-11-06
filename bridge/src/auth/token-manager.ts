@@ -6,7 +6,7 @@ import { DEFAULT_CALLBACK_PORTS } from "../profiles.js";
 import type { Redactor } from "../redact.js";
 import type { SignInBreaker } from "./breaker.js";
 import { browserSignIn, openInBrowser, type OpenUrl } from "./browser.js";
-import { NotSignedInError, OAuthError } from "./errors.js";
+import { NotSignedInError, OAuthError, ScopeRequiredError } from "./errors.js";
 import { chooseScope, discoverSignIn, requestToken, type FetchLike, type SignInTarget } from "./oauth.js";
 import type { CredentialVault } from "./vault.js";
 
@@ -37,7 +37,16 @@ export class TokenManager {
   /** The attempt running now; `interactive` says whether it may open the browser. */
   private inflight?: { readonly interactive: boolean; readonly promise: Promise<string> };
   private target?: Promise<SignInTarget>;
+  /** The last token a grant returned, and when, so a 401 for it can be told apart from an expired sign-in. */
+  private lastIssued?: { readonly token: string; readonly at: number };
+  private warnedFileFallback = false;
   private readonly fetch: FetchLike;
+
+  /**
+   * What happened to the refresh token of the last grant: whether the server issued one, and where it was
+   * stored or why it could not be. `login` reports this instead of guessing from the vault (#116).
+   */
+  lastRefreshToken?: { readonly issued: false } | { readonly issued: true; readonly store?: string; readonly error?: unknown };
   private readonly env: NodeJS.ProcessEnv;
   private readonly now: () => number;
 
@@ -49,6 +58,19 @@ export class TokenManager {
 
   private get profile(): Profile {
     return this.options.profile;
+  }
+
+  /**
+   * True when `token` is the one this process obtained in the last `withinMs` (default two minutes). A 401
+   * for such a token means the host rejects what the authorization server issues, not that it expired (#117).
+   */
+  obtainedRecently(token: string, withinMs = 120_000): boolean {
+    return this.lastIssued?.token === token && this.now() - this.lastIssued.at < withinMs;
+  }
+
+  /** The profile's name, for messages. */
+  get profileName(): string {
+    return this.profile.name;
   }
 
   /** False for `none` profiles, whose requests carry no token. */
@@ -189,7 +211,13 @@ export class TokenManager {
 
   /** The authorization server and resource to sign in against. Discovered once per process. */
   signInTarget(): Promise<SignInTarget> {
-    this.target ??= discoverSignIn(this.fetch, this.profile.url, this.profile.auth.authority).catch((error: unknown) => {
+    this.target ??= discoverSignIn(this.fetch, this.profile.url, this.profile.auth.authority).then((target) => {
+      for (const note of target.notes ?? []) {
+        this.options.log.warn(`Profile '${this.profile.name}': ${note}.`);
+      }
+
+      return target;
+    }, (error: unknown) => {
       this.target = undefined;
       throw error;
     });
@@ -287,11 +315,11 @@ export class TokenManager {
     }
 
     const auth = this.profile.auth;
-    const scope = chooseScope(auth.scope, target);
+    const scope = this.requireScope(target);
     const result = await browserSignIn({
       authorizationEndpoint: target.server.authorizationEndpoint,
       clientId: auth.clientId ?? "",
-      ...(scope ? { scope } : {}),
+      scope,
       ...(target.resource ? { resource: target.resource } : {}),
       ...(auth.username ? { loginHint: auth.username } : {}),
       ports: auth.callbackPorts ?? DEFAULT_CALLBACK_PORTS,
@@ -307,12 +335,27 @@ export class TokenManager {
       { credentialGrant: false, omitScope: true });
   }
 
+  /**
+   * The scope to request. Without one, the authorization server issues a token with no API scope (so no
+   * audience the host accepts) and no refresh token, and the host's 401 looks like a missing sign-in (#117).
+   */
+  private requireScope(target: SignInTarget): string {
+    const scope = chooseScope(this.profile.auth.scope, target);
+    if (!scope) {
+      throw new ScopeRequiredError(
+        `No scope to request for profile '${this.profile.name}': the profile sets no auth.scope and the host ` +
+        "advertises none. Set auth.scope to the API scope the host expects, with offline_access for a refresh token.");
+    }
+
+    return scope;
+  }
+
   private async grant(
     params: Record<string, string>,
     options: { credentialGrant: boolean; omitScope?: boolean },
   ): Promise<string> {
     const target = await this.signInTarget();
-    const scope = options.omitScope ? undefined : chooseScope(this.profile.auth.scope, target);
+    const scope = options.omitScope || params.grant_type === "refresh_token" ? undefined : this.requireScope(target);
     const request: Record<string, string> = {
       ...params,
       client_id: this.profile.auth.clientId ?? "",
@@ -332,16 +375,27 @@ export class TokenManager {
     }
 
     this.current = { token: tokens.accessToken, expiresAt: tokens.expiresAt };
+    this.lastIssued = { token: tokens.accessToken, at: this.now() };
     if (options.credentialGrant || params.grant_type === "authorization_code") {
       this.options.breaker.reset();
     }
 
     if (tokens.refreshToken) {
       try {
-        await this.options.vault.setRefreshToken(this.profile.name, tokens.refreshToken);
+        const stored = await this.options.vault.setRefreshToken(this.profile.name, tokens.refreshToken);
+        this.lastRefreshToken = { issued: true, store: stored.store };
+        if (stored.keychainRefused !== undefined && !this.warnedFileFallback) {
+          this.warnedFileFallback = true;
+          this.options.log.info(
+            `The OS keychain refused the refresh token for profile '${this.profile.name}' ` +
+            `(${describe(stored.keychainRefused)}); it is kept in ${stored.store} instead.`);
+        }
       } catch (error) {
+        this.lastRefreshToken = { issued: true, error };
         this.options.log.warn(`Could not store the refresh token for profile '${this.profile.name}'`, error);
       }
+    } else if (params.grant_type !== "refresh_token") {
+      this.lastRefreshToken = { issued: false };
     }
 
     return tokens.accessToken;
@@ -406,4 +460,8 @@ export function decodeJwtClaims(token: string): Record<string, unknown> | undefi
 function jwtExpiry(token: string): number | undefined {
   const exp = decodeJwtClaims(token)?.exp;
   return typeof exp === "number" ? exp * 1000 : undefined;
+}
+
+function describe(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }

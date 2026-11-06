@@ -56,9 +56,14 @@ export async function login(runtime: Runtime, options: LoginOptions, io: Io): Pr
   io.out(`Signed in to '${profile.name}'${typeof who === "string" ? ` as ${who}` : ""}.`);
 
   if (auth.type === "browser" || auth.type === "password" || auth.type === "client_credentials") {
-    const refresh = await runtime.vault.getRefreshToken(profile.name);
-    if (refresh) {
-      io.out(`The sign-in is kept in ${runtime.vault.refreshTokenStore} and renewed automatically.`);
+    const outcome = tokens.lastRefreshToken;
+    if (outcome?.issued && outcome.error !== undefined) {
+      // The server did issue one; storing it failed (#116). Say that, not that the server sent none.
+      io.err(
+        `The server issued a refresh token, but it could not be stored (${describe(outcome.error)}), so you will ` +
+        "have to sign in again when this token expires.");
+    } else if (outcome?.issued || await runtime.vault.getRefreshToken(profile.name)) {
+      io.out(`The sign-in is kept in ${outcome?.issued && outcome.store ? outcome.store : await runtime.vault.refreshTokenStoreFor(profile.name)} and renewed automatically.`);
     } else if (auth.type !== "client_credentials" && !options.save) {
       io.err(
         "The server issued no refresh token, so you will have to sign in again when this token expires. " +
@@ -71,7 +76,7 @@ export async function login(runtime: Runtime, options: LoginOptions, io: Io): Pr
     const tools = await upstream.listTools();
     io.out(`The host lists ${tools.length} tool(s) for this user.`);
   } catch (error) {
-    io.err(`Signed in, but listing tools failed: ${(error as Error).message}. Run \`abp-mcp doctor ${profile.name}\`.`);
+    io.err(`Signed in, but listing tools failed: ${sentence((error as Error).message)} Run \`abp-mcp doctor ${profile.name}\`.`);
   } finally {
     await upstream.close();
   }
@@ -81,4 +86,14 @@ export async function login(runtime: Runtime, options: LoginOptions, io: Io): Pr
 export async function logout(runtime: Runtime, io: Io): Promise<void> {
   await runtime.tokens.logout();
   io.out(`Signed out of '${runtime.profile.name}'.`);
+}
+
+/** `text` as one sentence: ends with exactly one period, so it can be followed by another (#117). */
+function sentence(text: string): string {
+  const trimmed = text.trim();
+  return /[.!?]$/.test(trimmed) ? trimmed : `${trimmed}.`;
+}
+
+function describe(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
