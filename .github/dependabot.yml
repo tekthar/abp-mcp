@@ -61,7 +61,15 @@ updates:
     open-pull-requests-limit: 5
     labels:
       - "dependencies"
-      - "bridge"
+    ignore:
+      # typescript-eslint supports TypeScript below 6.1. TypeScript 7 is the native (Go) compiler, without the
+      # JavaScript API typescript-eslint is built on. Lift this once typescript-eslint supports newer versions.
+      - dependency-name: "typescript"
+        versions: [">=6.1.0"]
+      # The bridge supports Node 22 and later, so its Node types stay on 22: newer ones would let code use
+      # APIs that Node 22 does not have.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
     groups:
       bridge-dev-tooling:
         dependency-type: "development"

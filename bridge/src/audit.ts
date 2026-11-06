@@ -36,7 +36,7 @@ export class AuditLog {
   }
 
   private rotateIfFull(): void {
-    let size = 0;
+    let size: number;
     try {
       size = fs.statSync(this.file).size;
     } catch {
