@@ -7,6 +7,11 @@ fresh, applies the profile's tool filter, and forwards every call to the app's `
 The server package does not change for it. AbpMcp stays in-process and HTTP-only; the bridge is just another MCP
 client of `/mcp`, with the user's own bearer token.
 
+**Hosts should run AbpMcp 0.4.1 or later.** In 0.4.0 and earlier, one tool whose `[Authorize]` names a permission
+the host does not define makes `tools/list` fail with `-32603` for every caller, so bridge users see no tools at
+all. 0.4.1 hides only that tool and reports it in `/mcp/_explain` (`undefined_permissions`). When `tools/list`
+fails with `-32603`, the bridge's error says so, and `abp-mcp doctor` names each tool with an undefined permission.
+
 ```text
 Claude Code / Claude Desktop
         │  stdio (JSON-RPC)
@@ -60,7 +65,9 @@ await applicationManager.CreateAsync(new OpenIddictApplicationDescriptor
 ```
 
 In ABP solutions this usually goes in the AuthServer's `OpenIddictDataSeedContributor`, next to the other clients.
-If your redirect URIs must use `localhost`, set `auth.redirectHost` to `localhost` in the profile.
+If your redirect URIs must use `localhost`, set `auth.redirectHost` to `localhost` in the profile. The bridge then
+listens on both `127.0.0.1` and `::1`, so a browser that resolves `localhost` to IPv6 still reaches it. RFC 8252
+(section 7.3) recommends `127.0.0.1`, which works the same everywhere.
 
 Users then need only the endpoint URL and the client id:
 
@@ -100,7 +107,9 @@ When a profile has no `auth.authority`, the bridge sends one unauthenticated req
 `WWW-Authenticate` header. If it names protected-resource metadata (RFC 9728,
 `resource_metadata="https://api.example.com/.well-known/oauth-protected-resource/mcp"`), or that document exists at
 the well-known location, the bridge takes the authorization server and scopes from it and sends its `resource` value
-(RFC 8707) when signing in. Without it, profiles set `auth.authority` and `auth.scope`, and `doctor` says so.
+(RFC 8707) when signing in. Without it, profiles set `auth.authority` and `auth.scope`. For a profile without
+`auth.authority`, `doctor` has a "Protected-resource metadata" step that fails when neither the 401 challenge nor
+the well-known locations name the metadata; [docs/oauth.md](oauth.md) shows how to set it up on the host.
 
 ### The read-only preset needs `/mcp/_discover`
 
@@ -116,10 +125,30 @@ A request is sent again only when the app refused it before running anything:
   sends the request once more.
 - **404 with a session id**: the app ended the MCP session (idle timeout, restart). The bridge opens a new session and
   sends the request once more.
+- **The session never opened**: opening the MCP session (`initialize`) failed before a `tools/call` was sent. The
+  call never left the machine, so the bridge tries once more on a fresh session; if that fails too, Claude gets
+  `BRIDGE_UNREACHABLE` ("nothing was sent").
 
 Anything else after a `tools/call` was sent (a dropped connection, a broken response stream, a timeout, a 5xx) may
 mean the call ran, so the bridge returns `BRIDGE_CALL_OUTCOME_UNKNOWN` and never re-sends it. `tools/list` and
 `initialize` change nothing, so they are retried once on a fresh session after any transport failure.
+
+## What `doctor` checks
+
+`abp-mcp doctor <profile>` runs these steps in order and stops at the first failure, with a fix:
+
+1. **Profile**: what the profile resolves to.
+2. **Reach the host**: an unauthenticated request to the endpoint, and the `WWW-Authenticate` challenge it gets.
+3. **Protected-resource metadata** (only without `auth.authority`): the challenge's `resource_metadata`, or a
+   document at the RFC 9728 well-known locations.
+4. **Authorization server** and **Sign-in pause** (profiles that sign in): the server's endpoints and scopes, and
+   whether sign-in is paused after a rejected credential, with the time left.
+5. **Sign-in**: a token without opening a browser.
+6. **tools/list**: the tools the host lists for this user.
+7. **Host instructions**: whether the host sets server instructions for Claude.
+8. **/mcp/_explain**: tools no caller can use because they require a permission the host does not define. These are
+   flagged with `!`, not treated as a failure.
+9. **/mcp/_discover**: each tool's HTTP method, which the read-only preset needs.
 
 ## Releasing the bridge
 
@@ -127,13 +156,20 @@ The bridge is versioned separately from the NuGet package.
 
 1. Update `bridge/package.json`'s `version` and add a `## [X.Y.Z]` section to `bridge/CHANGELOG.md`.
 2. Merge, then push a tag `bridge-vX.Y.Z`. (The NuGet release workflow takes `v*` tags, so the two never collide.)
-3. `.github/workflows/release-bridge.yml` tests the package, publishes `abp-mcp` to npm with
-   provenance, builds the Claude Desktop extension, and creates a GitHub Release with the `.mcpb` attached and the
-   changelog section as notes.
+3. `.github/workflows/release-bridge.yml` tests the package, then, in this order:
+   1. builds the Claude Desktop extension and checks it (manifest, version, the bundled bridge runs);
+   2. packs the npm tarball and checks its contents;
+   3. creates the GitHub Release as a **draft**, with the `.mcpb` and the tarball attached and the changelog section
+      as notes;
+   4. publishes that tarball to npm with provenance, unless npm already has this version;
+   5. publishes the release.
 
-npm publishing uses trusted publishing (OIDC, no long-lived token): on npmjs.com, add a trusted publisher for the
-package with repository `tekthar/abp-mcp` and workflow `release-bridge.yml`. npm only allows that once the package
-exists, so the very first release needs an `NPM_TOKEN` repository secret (an automation token); remove it afterwards.
+   npm comes last, so a failed build never leaves a version on npm without its release, and re-running a failed
+   workflow skips a publish that already happened. A pre-release version (`1.2.3-rc.1`) goes to the `next` dist-tag.
+
+npm publishing uses trusted publishing (OIDC, no token secret): on npmjs.com, the `abp-mcp` package has a trusted
+publisher with repository `tekthar/abp-mcp` and workflow `release-bridge.yml`. The workflow has no `NPM_TOKEN`; if
+the trusted publisher is missing, the publish step fails and the release stays a draft.
 
 ## Developing
 

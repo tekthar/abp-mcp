@@ -162,6 +162,38 @@ describe("proxy", () => {
     assert.match(textOf(result), /^\[BRIDGE_UNREACHABLE\] .*did not run/);
   });
 
+  it("retries a call once on a fresh session when the session never opened, and runs it once (#108)", async () => {
+    const bridge = await start();
+    await bridge.listToolNames();
+    await bridge.upstream.close();
+    host.failInitializations = 1;
+    const attempts = host.initializeAttempts;
+
+    assert.equal(textOf(await bridge.call("Book_Delete")), "deleted");
+    assert.equal(host.initializeAttempts - attempts, 2, "the first initialize failed, the second opened the session");
+    assert.equal(host.ran("Book_Delete"), 1);
+  });
+
+  it("gives up after one retry when the session still does not open, and says nothing was sent", async () => {
+    const bridge = await start();
+    await bridge.listToolNames();
+    await bridge.upstream.close();
+    host.failInitializations = 5;
+    const attempts = host.initializeAttempts;
+
+    const result = await bridge.call("Book_Delete");
+    assert.match(textOf(result), /^\[BRIDGE_UNREACHABLE\] .*did not run/);
+    assert.equal(host.initializeAttempts - attempts, 2, "one attempt and one retry, no more");
+    assert.equal(host.ran("Book_Delete"), 0);
+  });
+
+  it("hints at AbpMcp 0.4.1 when the host fails tools/list with -32603 (#108)", async () => {
+    const bridge = await start();
+    host.failToolsList = true;
+    await assert.rejects(bridge.client.listTools(), (error: unknown) =>
+      error instanceof Error && /-32603/.test(error.message) && /AbpMcp 0\.4\.1 or later/.test(error.message));
+  });
+
   it("passes tools/list_changed through", async () => {
     const bridge = await start();
     await bridge.listToolNames();

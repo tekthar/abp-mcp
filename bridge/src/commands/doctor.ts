@@ -1,4 +1,4 @@
-import type { Tool } from "@modelcontextprotocol/sdk/types.js";
+import { ErrorCode, McpError, type Tool } from "@modelcontextprotocol/sdk/types.js";
 import { NotSignedInError } from "../auth/errors.js";
 import { chooseScope } from "../auth/oauth.js";
 import { decodeJwtClaims } from "../auth/token-manager.js";
@@ -6,18 +6,23 @@ import { ToolFilter } from "../filter.js";
 import type { Io } from "../io.js";
 import { describeError } from "../log.js";
 import type { Runtime } from "../runtime.js";
+import { LIST_TOOLS_INTERNAL_ERROR_HINT } from "../upstream/errors.js";
 import { Upstream, type HttpMethods } from "../upstream/upstream.js";
-
-interface StepResult {
-  readonly ok: boolean;
-  readonly detail: string;
-  readonly fix?: string;
-}
+import {
+  checkResourceMetadata,
+  describeInstructions,
+  describeUndefinedPermissions,
+  formatRemaining,
+  readUndefinedPermissions,
+  type HostProbe,
+  type StepResult,
+} from "./doctor-checks.js";
 
 export interface DoctorOptions {
   /** Also report the filtered tool count and the schema size Claude pays for in every conversation. */
   readonly tools: boolean;
   readonly fetch?: typeof fetch;
+  readonly now?: () => number;
 }
 
 /**
@@ -30,6 +35,9 @@ export async function doctor(runtime: Runtime, options: DoctorOptions, io: Io): 
   const signsIn = profile.auth.type === "browser" || profile.auth.type === "password" || profile.auth.type === "client_credentials";
   let tools: Tool[] = [];
   let methods: HttpMethods | undefined;
+  let probe: HostProbe | undefined;
+  const now = options.now ?? Date.now;
+  const discovers = signsIn && !profile.auth.authority;
 
   const upstream = new Upstream({ profile, tokens, log: runtime.log, version: runtime.version, interactive: false, onToolListChanged: () => undefined });
   const steps: [string, () => Promise<StepResult>][] = [
@@ -42,11 +50,15 @@ export async function doctor(runtime: Runtime, options: DoctorOptions, io: Io): 
         const response = await fetchImpl(profile.url, { headers: { accept: "application/json, text/event-stream" }, signal: AbortSignal.timeout(10_000) });
         await response.body?.cancel().catch(() => undefined);
         const challenge = response.headers.get("www-authenticate");
+        probe = { status: response.status, challenge };
         return { ok: true, detail: `HTTP ${response.status}${challenge ? `, challenge: ${challenge}` : ""}` };
       } catch (error) {
         return { ok: false, detail: describeError(error), fix: reachFix(error) };
       }
     }],
+    ...(discovers ? [
+      ["Protected-resource metadata", () => checkResourceMetadata(fetchImpl, profile.url, probe)] as [string, () => Promise<StepResult>],
+    ] : []),
     ...(signsIn ? [
       ["Authorization server", async () => {
         try {
@@ -72,7 +84,11 @@ export async function doctor(runtime: Runtime, options: DoctorOptions, io: Io): 
       ["Sign-in pause", async () => {
         const status = runtime.breaker.status();
         return status.open
-          ? { ok: false, detail: `paused until ${status.until.toISOString()} (${status.reason})`, fix: `Fix the credentials, then run \`abp-mcp login ${profile.name}\`.` }
+          ? {
+            ok: false,
+            detail: `paused for another ${formatRemaining(status.until.getTime() - now())}, until ${status.until.toISOString()} (${status.reason})`,
+            fix: `Fix the credentials, then run \`abp-mcp login ${profile.name}\`.`,
+          }
           : { ok: true, detail: "not paused" };
       }] as [string, () => Promise<StepResult>],
     ] : []),
@@ -100,7 +116,21 @@ export async function doctor(runtime: Runtime, options: DoctorOptions, io: Io): 
         const host = upstream.serverInfo;
         return { ok: true, detail: `${tools.length} tool(s) from ${host ? `${host.name} ${host.version}` : "the host"}` };
       } catch (error) {
-        return { ok: false, detail: describeError(error), fix: "If the host answers 401, sign in again; if 403, the user lacks access to the MCP endpoint." };
+        return {
+          ok: false,
+          detail: describeError(error),
+          fix: error instanceof McpError && error.code === ErrorCode.InternalError
+            ? LIST_TOOLS_INTERNAL_ERROR_HINT.replace(/^Hint: /, "")
+            : "If the host answers 401, sign in again; if 403, the user lacks access to the MCP endpoint.",
+        };
+      }
+    }],
+    ["Host instructions", async () => describeInstructions(upstream.instructions)],
+    ["/mcp/_explain", async () => {
+      try {
+        return describeUndefinedPermissions(await readUndefinedPermissions(upstream.authenticatedFetch, profile.url));
+      } catch (error) {
+        return { ok: true, detail: `unavailable (${describeError(error)})` };
       }
     }],
     ["/mcp/_discover", async () => {
@@ -118,12 +148,12 @@ export async function doctor(runtime: Runtime, options: DoctorOptions, io: Io): 
   try {
     for (const [name, run] of steps) {
       const result = await run();
-      io.out(`${result.ok ? "✓" : "✗"} ${name}: ${result.detail}`);
-      if (!result.ok) {
-        if (result.fix) {
-          io.out(`  Fix: ${result.fix}`);
-        }
+      io.out(`${!result.ok ? "✗" : result.warn ? "!" : "✓"} ${name}: ${result.detail}`);
+      if (result.fix && (!result.ok || result.warn)) {
+        io.out(`  Fix: ${result.fix}`);
+      }
 
+      if (!result.ok) {
         return false;
       }
     }

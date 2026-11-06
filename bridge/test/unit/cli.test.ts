@@ -56,6 +56,19 @@ describe("cli", () => {
     }
   });
 
+  it("install --claude-code accepts only the user, project and local scopes (#105)", async () => {
+    const { dir, cleanup } = tempDir();
+    try {
+      const env = { ABP_MCP_PROFILES: path.join(dir, "profiles.json") };
+      fs.writeFileSync(env.ABP_MCP_PROFILES, JSON.stringify({ profiles: { dev: { url: "http://localhost:5000/mcp", auth: { type: "none" } } } }));
+      for (const scope of ["user & calc", "user;calc", "global", "", "USER"]) {
+        await assert.rejects(main(["install", "dev", "--claude-code", "--scope", scope], recordingIo(), env), /not a Claude Code scope/);
+      }
+    } finally {
+      cleanup();
+    }
+  });
+
   it("prints the version and rejects unknown commands", async () => {
     const io = recordingIo();
     assert.equal(await main(["--version"], io, {}), 0);

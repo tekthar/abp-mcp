@@ -9,7 +9,7 @@ import { AuditLog, toolErrorCode } from "../../src/audit.js";
 import { BREAKER_PAUSE_MS, SignInBreaker } from "../../src/auth/breaker.js";
 import { BreakerOpenError, KeychainUnavailableError } from "../../src/auth/errors.js";
 import { CredentialVault, FileSecretStore } from "../../src/auth/vault.js";
-import { claudeDesktopConfigPath, installClaudeDesktop } from "../../src/commands/install.js";
+import { claudeDesktopConfigPath, installClaudeCode, installClaudeDesktop, type SpawnClaude } from "../../src/commands/install.js";
 import { classifyCallError, MayHaveRunError, NotSentError } from "../../src/upstream/errors.js";
 import { MemoryKeychain, tempDir } from "../helpers/harness.js";
 
@@ -157,6 +157,60 @@ describe("install", () => {
     } finally {
       cleanup();
     }
+  });
+
+  it("keeps the original bytes in the backup, and creates the file when there is none", () => {
+    const { dir, cleanup } = tempDir();
+    try {
+      const file = path.join(dir, "Claude", "claude_desktop_config.json");
+      fs.mkdirSync(path.dirname(file));
+      const original = "{\n  \"mcpServers\": {},\n  \"keep\": [1, 2]\n}\n";
+      fs.writeFileSync(file, original);
+      installClaudeDesktop("dev", { name: "dev", configPath: file }, silentIo);
+      const backups = fs.readdirSync(path.dirname(file)).filter((name) => name.startsWith("claude_desktop_config.json.bak-"));
+      assert.equal(backups.length, 1);
+      assert.equal(fs.readFileSync(path.join(path.dirname(file), backups[0]!), "utf8"), original);
+
+      const fresh = path.join(dir, "new", "Claude", "claude_desktop_config.json");
+      installClaudeDesktop("dev", { name: "dev", configPath: fresh }, silentIo);
+      assert.deepEqual(JSON.parse(fs.readFileSync(fresh, "utf8")), { mcpServers: { dev: { command: "npx", args: ["-y", "abp-mcp", "--profile", "dev"] } } });
+      assert.deepEqual(fs.readdirSync(path.dirname(fresh)), ["claude_desktop_config.json"], "nothing to back up");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("runs `claude mcp add` with the exact argv, through a shell only on Windows (#107)", () => {
+    const calls: { command: string; args: string[]; shell: boolean }[] = [];
+    const spawn: SpawnClaude = (command, args, options) => {
+      calls.push({ command, args, shell: options.shell });
+      return { status: 0 };
+    };
+    const lines: string[] = [];
+    const io = { ...silentIo, out: (line: string) => lines.push(line) };
+
+    assert.equal(installClaudeCode("staging", { name: "library-staging", scope: "project", spawn, platform: "linux" }, io), true);
+    assert.equal(installClaudeCode("staging", { name: "library-staging", scope: "user", spawn, platform: "win32" }, io), true);
+    assert.deepEqual(calls, [
+      { command: "claude", args: ["mcp", "add", "library-staging", "--scope", "project", "--", "npx", "-y", "abp-mcp", "--profile", "staging"], shell: false },
+      { command: "claude", args: ["mcp", "add", "library-staging", "--scope", "user", "--", "npx", "-y", "abp-mcp", "--profile", "staging"], shell: true },
+    ]);
+    assert.match(lines[0]!, /Added 'library-staging' to Claude Code \(project scope\)/);
+  });
+
+  it("prints the command to run by hand when `claude` fails, and never runs a bad scope", () => {
+    const errors: string[] = [];
+    const io = { ...silentIo, err: (line: string) => errors.push(line) };
+    const missing: SpawnClaude = () => ({ error: new Error("spawn claude ENOENT"), status: null });
+    assert.equal(installClaudeCode("dev", { name: "dev", scope: "local", spawn: missing }, io), false);
+    assert.equal(errors[1], "  claude mcp add dev --scope local -- npx -y abp-mcp --profile dev");
+
+    let ran = false;
+    assert.throws(() => installClaudeCode("dev", { name: "dev", scope: "user & calc", spawn: () => {
+      ran = true;
+      return { status: 0 };
+    } }, io), /not a Claude Code scope/);
+    assert.equal(ran, false);
   });
 
   it("knows where Claude Desktop keeps its config", () => {

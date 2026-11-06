@@ -1,9 +1,8 @@
-import { execFileSync } from "node:child_process";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import type { Logger } from "../log.js";
 import { KeychainUnavailableError } from "./errors.js";
+import { restrictToCurrentWindowsUser } from "./windows-acl.js";
 
 /** The secrets the bridge can keep for a profile. */
 export type SecretKind = "refresh_token" | "password" | "client_secret";
@@ -209,6 +208,6 @@ function restrictToCurrentUser(file: string): void {
     return;
   }
 
-  // Remove inherited entries and grant only the current user.
-  execFileSync("icacls", [file, "/inheritance:r", "/grant:r", `${os.userInfo().username}:F`], { stdio: "ignore" });
+  // Remove inherited entries and grant only the current user (by SID, so Entra ID and domain accounts resolve).
+  restrictToCurrentWindowsUser(file);
 }

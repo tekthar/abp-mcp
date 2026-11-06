@@ -15,7 +15,7 @@ import type { TokenManager } from "./auth/token-manager.js";
 import { ToolFilter, type FilterDecision } from "./filter.js";
 import { describeError, type Logger } from "./log.js";
 import type { Profile } from "./profiles.js";
-import { MayHaveRunError, NotSentError } from "./upstream/errors.js";
+import { MayHaveRunError, NotSentError, withListToolsHint } from "./upstream/errors.js";
 import type { HttpMethods, Upstream } from "./upstream/upstream.js";
 
 export interface BridgeOptions {
@@ -85,7 +85,7 @@ export class Bridge {
       }
     } catch (error) {
       this.options.log.error("tools/list failed", error);
-      throw new McpError(ErrorCode.InternalError, userMessage(error, this.options.profile));
+      throw new McpError(ErrorCode.InternalError, withListToolsHint(userMessage(error, this.options.profile), error));
     }
 
     return tools.filter((tool) => this.decide(tool.name).visible);
