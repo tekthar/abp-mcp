@@ -11,7 +11,9 @@ namespace AbpMcp.Diagnostics;
 
 /// <summary>
 /// Builds the <c>/mcp/_explain</c> exposure decisions: for each app-service method ABP's api-definition
-/// describes, whether abp-mcp exposes it as a tool and the attribute that decided it.
+/// describes, whether abp-mcp exposes it as a tool and the attribute that decided it. <c>[McpTool]</c> services
+/// of the exposed assemblies that the api-definition does not describe get rows too, from
+/// <see cref="UndescribedToolServiceExplainer"/>.
 /// </summary>
 internal static class AbpMcpExposureExplainer
 {
@@ -31,6 +33,7 @@ internal static class AbpMcpExposureExplainer
             : new HashSet<Assembly>(options.ExposedAssemblies.Select(e => e.Assembly));
 
         var rows = new List<object>();
+        var describedServiceTypes = new HashSet<Type>();
 
         foreach (var module in model.Modules.Values)
         {
@@ -43,9 +46,8 @@ internal static class AbpMcpExposureExplainer
                     continue;
                 }
 
-                if (!string.IsNullOrEmpty(serviceFilter) &&
-                    !serviceType.FullName!.Contains(serviceFilter, StringComparison.OrdinalIgnoreCase) &&
-                    !serviceType.Name.Contains(serviceFilter, StringComparison.OrdinalIgnoreCase))
+                describedServiceTypes.Add(serviceType);
+                if (!MatchesFilter(serviceType, serviceFilter))
                 {
                     continue;
                 }
@@ -80,8 +82,21 @@ internal static class AbpMcpExposureExplainer
             }
         }
 
+        // With no registered assemblies there is no bounded set to look for [McpTool] services in, and
+        // scanning the whole AppDomain would disclose unrelated code; auto-discovery normally fills the set.
+        if (allowedAssemblies is not null)
+        {
+            rows.AddRange(UndescribedToolServiceExplainer.Explain(model, allowedAssemblies, describedServiceTypes, serviceFilter));
+        }
+
         return rows;
     }
+
+    /// <summary>True when <paramref name="serviceType"/> matches the optional <c>?service=</c> filter.</summary>
+    internal static bool MatchesFilter(Type serviceType, string? serviceFilter) =>
+        string.IsNullOrEmpty(serviceFilter) ||
+        serviceType.FullName!.Contains(serviceFilter, StringComparison.OrdinalIgnoreCase) ||
+        serviceType.Name.Contains(serviceFilter, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// Every tool that requires a permission or policy this host does not define, with that name. The authorizer
@@ -103,7 +118,8 @@ internal static class AbpMcpExposureExplainer
         return rows;
     }
 
-    private static (bool Included, string Reason) Decide(
+    /// <summary>The attribute decision for one method of a service: exposed or not, and which attribute decided it.</summary>
+    internal static (bool Included, string Reason) Decide(
         Type serviceType,
         MethodInfo method,
         McpToolAttribute? classExpose,

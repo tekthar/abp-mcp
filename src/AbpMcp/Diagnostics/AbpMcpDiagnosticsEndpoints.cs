@@ -39,7 +39,22 @@ public static class AbpMcpDiagnosticsEndpoints
     /// parameter schemas they reveal are the same application structure that gates authentication
     /// on the MCP endpoint itself; they must follow the same auth posture.
     /// </param>
-    public static void Map(IEndpointRouteBuilder endpoints, string basePath, bool requireAuthorization)
+    public static void Map(IEndpointRouteBuilder endpoints, string basePath, bool requireAuthorization) =>
+        Map(endpoints, basePath, requireAuthorization, authorizationPolicy: null);
+
+    /// <summary>
+    /// Mount the diagnostics endpoints under the given base path, guarded by a named authorization policy.
+    /// Called by <see cref="AbpMcpBuilderExtensions.MapAbpMcp"/>; not intended to be called directly.
+    /// </summary>
+    /// <param name="endpoints">The route builder to mount on.</param>
+    /// <param name="basePath">The base path (matches <see cref="AbpMcpOptions.Path"/>).</param>
+    /// <param name="requireAuthorization">When true, both endpoints require authorization.</param>
+    /// <param name="authorizationPolicy">
+    /// The policy both endpoints require (<see cref="AbpMcpOptions.AuthorizationPolicy"/>), so they are never
+    /// looser than the MCP endpoint. <c>null</c> or blank means the host's default policy. Ignored when
+    /// <paramref name="requireAuthorization"/> is false.
+    /// </param>
+    public static void Map(IEndpointRouteBuilder endpoints, string basePath, bool requireAuthorization, string? authorizationPolicy)
     {
         ArgumentNullException.ThrowIfNull(endpoints);
         ArgumentNullException.ThrowIfNull(basePath);
@@ -54,8 +69,25 @@ public static class AbpMcpDiagnosticsEndpoints
 
         if (requireAuthorization)
         {
-            discover.RequireAuthorization();
-            explain.RequireAuthorization();
+            RequireAuthorization(discover, authorizationPolicy);
+            RequireAuthorization(explain, authorizationPolicy);
+        }
+    }
+
+    /// <summary>
+    /// Require <paramref name="policy"/> on <paramref name="builder"/>, or the host's default policy when it is
+    /// null or blank. Shared with <c>MapAbpMcp</c> so the MCP endpoint and the diagnostics endpoints cannot end
+    /// up on different policies.
+    /// </summary>
+    internal static void RequireAuthorization(IEndpointConventionBuilder builder, string? policy)
+    {
+        if (string.IsNullOrWhiteSpace(policy))
+        {
+            builder.RequireAuthorization();
+        }
+        else
+        {
+            builder.RequireAuthorization(policy);
         }
     }
 

@@ -29,6 +29,18 @@ const NOT_SENT_CODES = new Set([
   "ERR_TLS_CERT_ALTNAME_INVALID", "UND_ERR_CONNECT_TIMEOUT",
 ]);
 
+/** What a host answering `tools/list` with -32603 (internal error) most likely needs. */
+export const LIST_TOOLS_INTERNAL_ERROR_HINT =
+  "Hint: AbpMcp 0.4.0 and earlier fail tools/list for every caller when one tool requires a permission the host " +
+  "does not define. The host should run AbpMcp 0.4.1 or later; its /mcp/_explain lists such tools.";
+
+/** The message for a failed `tools/list`, with a hint when the host answered with an internal error (-32603). */
+export function withListToolsHint(message: string, error: unknown): string {
+  return error instanceof McpError && error.code === ErrorCode.InternalError
+    ? `${message} ${LIST_TOOLS_INTERNAL_ERROR_HINT}`
+    : message;
+}
+
 /** The host's session for this client is gone (it answered 404). The request did not run. */
 export function isSessionExpired(error: unknown): boolean {
   return error instanceof StreamableHTTPError && error.code === 404;

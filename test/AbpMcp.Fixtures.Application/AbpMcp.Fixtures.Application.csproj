@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Stands in for an ABP *.Application project: it tags services through AbpMcp.Abstractions only and
+       never references AbpMcp or ASP.NET Core (#98). The E2E tests load its module into the Library
+       sample as a plug-in and check abp-mcp auto-discovers it. -->
+  <PropertyGroup>
+    <RootNamespace>AbpMcp.Fixtures.Application</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\AbpMcp.Abstractions\AbpMcp.Abstractions.csproj" />
+    <PackageReference Include="Volo.Abp.Ddd.Application.Contracts" Version="$(AbpHostVersion)" />
+  </ItemGroup>
+
+</Project>

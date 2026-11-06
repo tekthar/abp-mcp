@@ -80,10 +80,13 @@ public static class AbpMcpBuilderExtensions
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IAbpMcpAddin, OutputSchemaAddin>());
 
         // Microsoft MCP SDK registration. The caller still must have ASP.NET Core wired up.
-        // Stateful sessions are pinned explicitly: SDK 2.x defaults to stateless (MCP 2026-07-28,
-        // SEP-2567), which has no session to push notifications/tools/list_changed over, so
-        // IAbpMcpToolListChangedNotifier could no longer tell connected agents to re-read the tool list.
-        services.AddMcpServer().WithHttpTransport(transport => transport.SessionMode = HttpServerSessionMode.Stateful);
+        // The session mode comes from AbpMcpOptions.Stateless and is stateful unless the host opts out:
+        // SDK 2.x defaults to stateless (MCP 2026-07-28, SEP-2567), which has no session to push
+        // notifications/tools/list_changed over, so IAbpMcpToolListChangedNotifier could no longer tell
+        // connected agents to re-read the tool list. Registered here, before the host's own configuration,
+        // so a host's Configure<HttpServerTransportOptions> still wins.
+        services.AddMcpServer().WithHttpTransport();
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IConfigureOptions<HttpServerTransportOptions>, AbpMcpTransportSessionMode>());
 
         // Bridge our descriptors to the SDK's tool handlers. This is the only place
         // we touch McpServerOptions; the rest of the codebase is SDK-agnostic.
@@ -96,6 +99,11 @@ public static class AbpMcpBuilderExtensions
     /// Mounts the MCP endpoint on the configured path, plus the diagnostic endpoints
     /// <c>{path}/_discover</c> and <c>{path}/_explain</c>. Call after <see cref="AddAbpMcp"/>.
     /// </summary>
+    /// <remarks>
+    /// The returned builder covers the MCP endpoint only. To put all three endpoints behind one authorization
+    /// policy, set <see cref="AbpMcpOptions.AuthorizationPolicy"/> rather than calling
+    /// <c>RequireAuthorization(policy)</c> on the return value.
+    /// </remarks>
     public static IEndpointConventionBuilder MapAbpMcp(this IEndpointRouteBuilder endpoints)
     {
         ArgumentNullException.ThrowIfNull(endpoints);
@@ -112,13 +120,17 @@ public static class AbpMcpBuilderExtensions
 
         if (!options.AllowAnonymous)
         {
-            convention.RequireAuthorization();
+            AbpMcpDiagnosticsEndpoints.RequireAuthorization(convention, options.AuthorizationPolicy);
         }
 
-        // Diagnostic endpoints follow the same auth and origin posture as the MCP endpoint itself.
-        // _discover and _explain reveal the full tool surface, parameter schemas, and required
-        // permissions, so leaving them anonymous in an otherwise-authed host would be a leak.
-        AbpMcpDiagnosticsEndpoints.Map(endpoints, options.Path, requireAuthorization: !options.AllowAnonymous);
+        // Diagnostic endpoints follow the same auth policy and origin posture as the MCP endpoint itself.
+        // _discover and _explain reveal the full tool surface, parameter schemas, and required permissions,
+        // so leaving them anonymous, or on a looser policy, in an otherwise-authed host would be a leak.
+        AbpMcpDiagnosticsEndpoints.Map(
+            endpoints,
+            options.Path,
+            requireAuthorization: !options.AllowAnonymous,
+            authorizationPolicy: options.AuthorizationPolicy);
 
         return convention;
     }

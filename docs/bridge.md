@@ -7,6 +7,11 @@ fresh, applies the profile's tool filter, and forwards every call to the app's `
 The server package does not change for it. AbpMcp stays in-process and HTTP-only; the bridge is just another MCP
 client of `/mcp`, with the user's own bearer token.
 
+**Hosts should run AbpMcp 0.4.1 or later.** In 0.4.0 and earlier, one tool whose `[Authorize]` names a permission
+the host does not define makes `tools/list` fail with `-32603` for every caller, so bridge users see no tools at
+all. 0.4.1 hides only that tool and reports it in `/mcp/_explain` (`undefined_permissions`). When `tools/list`
+fails with `-32603`, the bridge's error says so, and `abp-mcp doctor` names each tool with an undefined permission.
+
 ```text
 Claude Code / Claude Desktop
         │  stdio (JSON-RPC)
@@ -60,7 +65,9 @@ await applicationManager.CreateAsync(new OpenIddictApplicationDescriptor
 ```
 
 In ABP solutions this usually goes in the AuthServer's `OpenIddictDataSeedContributor`, next to the other clients.
-If your redirect URIs must use `localhost`, set `auth.redirectHost` to `localhost` in the profile.
+If your redirect URIs must use `localhost`, set `auth.redirectHost` to `localhost` in the profile. The bridge then
+listens on both `127.0.0.1` and `::1`, so a browser that resolves `localhost` to IPv6 still reaches it. RFC 8252
+(section 7.3) recommends `127.0.0.1`, which works the same everywhere.
 
 Users then need only the endpoint URL and the client id:
 
@@ -100,7 +107,19 @@ When a profile has no `auth.authority`, the bridge sends one unauthenticated req
 `WWW-Authenticate` header. If it names protected-resource metadata (RFC 9728,
 `resource_metadata="https://api.example.com/.well-known/oauth-protected-resource/mcp"`), or that document exists at
 the well-known location, the bridge takes the authorization server and scopes from it and sends its `resource` value
-(RFC 8707) when signing in. Without it, profiles set `auth.authority` and `auth.scope`, and `doctor` says so.
+(RFC 8707) when signing in. Without it, profiles set `auth.authority` and `auth.scope`. For a profile without
+`auth.authority`, `doctor` has a "Protected-resource metadata" step that fails when neither the 401 challenge nor
+the well-known locations name the metadata; [docs/oauth.md](oauth.md) shows how to set it up on the host.
+
+Every discovered URL follows the same rule as the URLs in a profile: https, or plain http only for `localhost`,
+`127.0.0.1` and `[::1]`. That covers the `resource_metadata` URL, the authorization server, and its token,
+authorization and revocation endpoints, whether or not `auth.authority` is set. The bridge also checks that the
+metadata's `resource` is the profile's URL (or a parent path on the same origin) and that the authorization server's
+`issuer` is the one it was fetched for, and it refuses to sign in otherwise. The browser is opened only for an https
+(or loopback http) URL. No other scheme is ever passed to the OS URL handler.
+
+[MCP OAuth for ABP + OpenIddict](oauth.md) shows how to publish that metadata, register the resource with OpenIddict
+and check the result.
 
 ### The read-only preset needs `/mcp/_discover`
 
@@ -116,10 +135,64 @@ A request is sent again only when the app refused it before running anything:
   sends the request once more.
 - **404 with a session id**: the app ended the MCP session (idle timeout, restart). The bridge opens a new session and
   sends the request once more.
+- **The session never opened**: opening the MCP session (`initialize`) failed before a `tools/call` was sent. The
+  call never left the machine, so the bridge tries once more on a fresh session; if that fails too, Claude gets
+  `BRIDGE_UNREACHABLE` ("nothing was sent").
 
 Anything else after a `tools/call` was sent (a dropped connection, a broken response stream, a timeout, a 5xx) may
 mean the call ran, so the bridge returns `BRIDGE_CALL_OUTCOME_UNKNOWN` and never re-sends it. `tools/list` and
 `initialize` change nothing, so they are retried once on a fresh session after any transport failure.
+
+When several requests fail on the same expired session, the bridge opens one new session and they all use it; a
+session that was replaced is closed only after the requests still running on it have settled.
+
+## Startup: the app's instructions and `initialize`
+
+Claude reads the server's name and instructions only from `initialize`, once per session. The bridge therefore holds
+its answer to Claude's `initialize` until the session with the app is open, for up to 20 seconds, so Claude sees the
+app's own `serverInfo` and `instructions` (followed by the profile's stage and `notes`). While the app is unreachable,
+the bridge tries again every half second within that window.
+
+- **Browser profile, first run or expired sign-in**: `initialize` starts the browser sign-in (Claude lists the tools
+  right after `initialize`, which would start it anyway). If the user finishes within the window, `initialize` carries
+  the app's instructions. The sign-in is shared with the first `tools/list`, so the browser opens once.
+- **Fallback**: if the session is not open within the window (the app is down, or the user is still in the browser),
+  `initialize` answers with the bridge's own name (`abp-mcp`) and instructions, which say that the app's instructions
+  are missing from this session. The bridge keeps working: the sign-in finishes in the background and the tool list
+  updates by itself. To get the app's instructions, restart the MCP server once the app is reachable (in Claude Code,
+  `/mcp`; in Claude Desktop, restart the app).
+- A sign-in problem the user must fix (no saved credential, paused sign-in) answers at once, with the fallback.
+
+## Several bridges on one profile
+
+Claude Code and Claude Desktop often run the same profile at the same time, sharing its stored refresh token. With
+refresh-token rotation (OpenIddict's default) one bridge can renew with a token the other has just used. When the
+authorization server rejects a refresh token, the bridge reads the stored one again and, if another bridge stored a
+newer one, renews with that once. It deletes the stored refresh token only if it is still the one that was rejected.
+
+## The audit log
+
+`ABP_MCP_AUDIT=1` is best-effort. A failed write (an unwritable directory, a full disk) never changes the result of
+the tool call it describes: the bridge logs one warning and pauses auditing for a minute after each failure. If another
+process holds the file open during rotation (`EPERM`/`EBUSY` on Windows), the bridge skips the rotation and keeps
+appending to the current file.
+
+## What `doctor` checks
+
+`abp-mcp doctor <profile>` runs these steps in order and stops at the first failure, with a fix:
+
+1. **Profile**: what the profile resolves to.
+2. **Reach the host**: an unauthenticated request to the endpoint, and the `WWW-Authenticate` challenge it gets.
+3. **Protected-resource metadata** (only without `auth.authority`): the challenge's `resource_metadata`, or a
+   document at the RFC 9728 well-known locations.
+4. **Authorization server** and **Sign-in pause** (profiles that sign in): the server's endpoints and scopes, and
+   whether sign-in is paused after a rejected credential, with the time left.
+5. **Sign-in**: a token without opening a browser.
+6. **tools/list**: the tools the host lists for this user.
+7. **Host instructions**: whether the host sets server instructions for Claude.
+8. **/mcp/_explain**: tools no caller can use because they require a permission the host does not define. These are
+   flagged with `!`, not treated as a failure.
+9. **/mcp/_discover**: each tool's HTTP method, which the read-only preset needs.
 
 ## Releasing the bridge
 
@@ -127,13 +200,20 @@ The bridge is versioned separately from the NuGet package.
 
 1. Update `bridge/package.json`'s `version` and add a `## [X.Y.Z]` section to `bridge/CHANGELOG.md`.
 2. Merge, then push a tag `bridge-vX.Y.Z`. (The NuGet release workflow takes `v*` tags, so the two never collide.)
-3. `.github/workflows/release-bridge.yml` tests the package, publishes `abp-mcp` to npm with
-   provenance, builds the Claude Desktop extension, and creates a GitHub Release with the `.mcpb` attached and the
-   changelog section as notes.
+3. `.github/workflows/release-bridge.yml` tests the package, then, in this order:
+   1. builds the Claude Desktop extension and checks it (manifest, version, the bundled bridge runs);
+   2. packs the npm tarball and checks its contents;
+   3. creates the GitHub Release as a **draft**, with the `.mcpb` and the tarball attached and the changelog section
+      as notes;
+   4. publishes that tarball to npm with provenance, unless npm already has this version;
+   5. publishes the release.
 
-npm publishing uses trusted publishing (OIDC): `abp-mcp` on npmjs.com trusts the workflow `release-bridge.yml` in
-`tekthar/abp-mcp`, so no npm token is stored in the repository or anywhere else. If the workflow file is renamed or
-moved, update the trusted publisher in the package's settings on npmjs.com before the next release.
+   npm comes last, so a failed build never leaves a version on npm without its release, and re-running a failed
+   workflow skips a publish that already happened. A pre-release version (`1.2.3-rc.1`) goes to the `next` dist-tag.
+
+npm publishing uses trusted publishing (OIDC, no token secret): on npmjs.com, the `abp-mcp` package has a trusted
+publisher with repository `tekthar/abp-mcp` and workflow `release-bridge.yml`. The workflow has no `NPM_TOKEN`; if
+the trusted publisher is missing, the publish step fails and the release stays a draft.
 
 ## Developing
 

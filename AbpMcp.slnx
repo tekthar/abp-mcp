@@ -4,8 +4,11 @@
   </Folder>
   <Folder Name="/src/">
     <Project Path="src/AbpMcp/AbpMcp.csproj" />
+    <Project Path="src/AbpMcp.Abstractions/AbpMcp.Abstractions.csproj" />
   </Folder>
   <Folder Name="/test/">
+    <Project Path="test/AbpMcp.Fixtures.Application/AbpMcp.Fixtures.Application.csproj" />
+    <Project Path="test/AbpMcp.Fixtures.HttpApi/AbpMcp.Fixtures.HttpApi.csproj" />
     <Project Path="test/AbpMcp.IntegrationTests/AbpMcp.IntegrationTests.csproj" />
     <Project Path="test/AbpMcp.Tests/AbpMcp.Tests.csproj" />
   </Folder>

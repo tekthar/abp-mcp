@@ -1,20 +1,26 @@
 name: Release bridge
 
 # Triggered by a tag of the form bridge-vX.Y.Z. (The NuGet release workflow takes v* tags; the two never
-# collide.) Tests, publishes abp-mcp to npm with provenance, and creates a GitHub Release
-# with the Claude Desktop extension (.mcpb) attached.
+# collide.) Tests the package, builds and checks the Claude Desktop extension (.mcpb) and the npm tarball,
+# creates the GitHub Release as a draft with both attached, publishes to npm, and only then publishes the
+# release. npm publishing is the last step that can fail, so a failed build never leaves a version on npm
+# without its release, and a re-run skips a version npm already has.
 on:
   push:
     tags:
       - "bridge-v*"
 
 permissions:
-  contents: write   # gh release create
-  id-token: write   # npm provenance and trusted publishing (OIDC)
+  contents: write   # gh release create / upload / edit
+  id-token: write   # npm trusted publishing (OIDC) and provenance
+
+concurrency:
+  group: release-bridge-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   publish:
-    name: Test, publish to npm, release the .mcpb
+    name: Test, release the .mcpb, publish to npm
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -40,6 +46,11 @@ jobs:
             exit 1
           fi
           echo "version=${version}" >> "$GITHUB_OUTPUT"
+          # A pre-release (1.2.3-rc.1) goes to the "next" dist-tag and is marked as a pre-release on GitHub.
+          case "$version" in
+            *-*) echo "dist_tag=next" >> "$GITHUB_OUTPUT"; echo "prerelease=true" >> "$GITHUB_OUTPUT" ;;
+            *)   echo "dist_tag=latest" >> "$GITHUB_OUTPUT"; echo "prerelease=false" >> "$GITHUB_OUTPUT" ;;
+          esac
 
       - name: Install, lint, typecheck, test, build
         run: |
@@ -48,32 +59,82 @@ jobs:
           npm run typecheck
           npm test
           npm run build
+
+      # 1. The Claude Desktop extension: build it, then unpack it and check what Claude Desktop will run.
+      - name: Build and verify the Claude Desktop extension (.mcpb)
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          npm run pack:mcpb
+          bundle="abp-mcp-bridge-${VERSION}.mcpb"
+          unpacked="${RUNNER_TEMP}/mcpb"
+          npx --no-install mcpb unpack "$bundle" "$unpacked"
+          npx --no-install mcpb validate "$unpacked/manifest.json"
+          manifest_version="$(node -p "require(process.argv[1]).version" "$unpacked/manifest.json")"
+          test "$manifest_version" = "$VERSION" || { echo "::error::The .mcpb manifest says ${manifest_version}, not ${VERSION}."; exit 1; }
+          bundled_version="$(node "$unpacked/dist/bin.js" --version)"
+          test "$bundled_version" = "$VERSION" || { echo "::error::The bundled bridge reports ${bundled_version}, not ${VERSION}."; exit 1; }
+
+      # 2. The npm tarball: exactly what npm publish uploads below.
+      - name: Pack and check the npm package
+        id: pack
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
           node scripts/check-pack.mjs
+          tarball="$(npm pack --ignore-scripts --json | node -e 'process.stdout.write(JSON.parse(require("fs").readFileSync(0, "utf8"))[0].filename)')"
+          test "$tarball" = "abp-mcp-${VERSION}.tgz" || { echo "::error::Unexpected tarball name $tarball."; exit 1; }
+          tar -tzf "$tarball" | grep -qx 'package/dist/bin.js' || { echo "::error::$tarball has no dist/bin.js."; exit 1; }
+          echo "tarball=${tarball}" >> "$GITHUB_OUTPUT"
 
-      # Trusted publishing needs npm 11.5.1 or later.
-      - name: Upgrade npm
-        run: npm install -g npm@11
-
-      # npm authenticates through trusted publishing (OIDC): abp-mcp on npmjs.com trusts this workflow file in
-      # tekthar/abp-mcp. No npm token is stored anywhere.
-      - name: Publish to npm
-        run: npm publish --provenance --access public
-
-      - name: Build the Claude Desktop extension (.mcpb)
-        run: npm run pack:mcpb
-
-      - name: Create the GitHub Release
+      # 3. The release, as a draft: nothing is public yet. A re-run replaces the assets of an existing draft.
+      - name: Create the GitHub Release as a draft
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.version.outputs.version }}
+          PRERELEASE: ${{ steps.version.outputs.prerelease }}
+          TARBALL: ${{ steps.pack.outputs.tarball }}
         run: |
           awk -v version="$VERSION" '
             $0 ~ "^## \\[" version "\\]" { found = 1; next }
             found && /^## \[/ { exit }
             found { print }
           ' CHANGELOG.md > release-notes.md
-          # --latest=false: the repository's "Latest" release stays the NuGet package's.
-          gh release create "${GITHUB_REF_NAME}" "abp-mcp-bridge-${VERSION}.mcpb" \
-            --title "abp-mcp bridge ${VERSION}" \
-            --notes-file release-notes.md \
-            --latest=false
+          assets=("abp-mcp-bridge-${VERSION}.mcpb" "$TARBALL")
+          if gh release view "${GITHUB_REF_NAME}" > /dev/null 2>&1; then
+            gh release upload "${GITHUB_REF_NAME}" "${assets[@]}" --clobber
+          else
+            flags=()
+            if [ "$PRERELEASE" = "true" ]; then flags+=(--prerelease); fi
+            # --latest=false: the repository's "Latest" release stays the NuGet package's.
+            gh release create "${GITHUB_REF_NAME}" "${assets[@]}" \
+              --draft \
+              --title "abp-mcp bridge ${VERSION}" \
+              --notes-file release-notes.md \
+              --latest=false \
+              "${flags[@]}"
+          fi
+
+      # Trusted publishing needs npm 11.5.1 or later.
+      - name: Upgrade npm
+        run: npm install -g npm@11
+
+      # 4. npm, through trusted publishing (OIDC): no token secret. The trusted publisher for this package is
+      #    configured on npmjs.com (repository tekthar/abp-mcp, workflow release-bridge.yml).
+      - name: Publish to npm
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          DIST_TAG: ${{ steps.version.outputs.dist_tag }}
+          TARBALL: ${{ steps.pack.outputs.tarball }}
+        run: |
+          if [ "$(npm view "abp-mcp@${VERSION}" version 2> /dev/null)" = "${VERSION}" ]; then
+            echo "abp-mcp@${VERSION} is already on npm; skipping the publish."
+            exit 0
+          fi
+          npm publish "$TARBALL" --provenance --access public --tag "$DIST_TAG"
+
+      # 5. Everything succeeded: publish the release.
+      - name: Publish the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release edit "${GITHUB_REF_NAME}" --draft=false --latest=false

@@ -16,6 +16,12 @@ public static class AbpMcpErrorCodes
     /// <summary>The entity the tool was asked to act on does not exist (ABP <c>EntityNotFoundException</c>).</summary>
     public const string NotFound = "NOT_FOUND";
 
+    /// <summary>
+    /// The write lost an optimistic-concurrency race (ABP <c>AbpDbConcurrencyException</c>; REST answers 409):
+    /// the record changed since the agent read it. Re-reading it and retrying with the new values succeeds.
+    /// </summary>
+    public const string Conflict = "CONFLICT";
+
     /// <summary>Tool name is not registered (or was removed).</summary>
     public const string UnknownTool = "UNKNOWN_TOOL";
 

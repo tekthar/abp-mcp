@@ -2,6 +2,7 @@ using AbpMcp.Metadata;
 using Microsoft.Extensions.Logging;
 using Volo.Abp;
 using Volo.Abp.Authorization;
+using Volo.Abp.Data;
 using Volo.Abp.Domain.Entities;
 using Volo.Abp.Validation;
 
@@ -13,6 +14,10 @@ namespace AbpMcp.Dispatch;
 /// </summary>
 internal static class AbpMcpExceptionMapper
 {
+    /// <summary>The message every <see cref="AbpMcpErrorCodes.Conflict"/> carries; it tells the agent how to recover.</summary>
+    internal const string ConflictMessage =
+        "The record was changed by someone else since it was read. Read it again and retry with the new values.";
+
     /// <summary>
     /// ABP's message is a generic "arguments are not valid"; the per-member errors are what an agent
     /// needs to correct its call. These are the same validation errors ABP's REST error response returns.
@@ -70,6 +75,12 @@ internal static class AbpMcpExceptionMapper
             case EntityNotFoundException nfe:
                 logger.LogInformation(ex, "Tool {Tool} did not find the requested entity", descriptor.Name);
                 return new AbpMcpToolException(AbpMcpErrorCodes.NotFound, DescribeNotFound(nfe), nfe);
+
+            case AbpDbConcurrencyException dce:
+                // Optimistic-concurrency loss (REST answers 409). A fixed message: the exception's own one
+                // can name tables and columns, and the agent only needs to know that re-reading fixes it.
+                logger.LogInformation(ex, "Tool {Tool} lost an optimistic-concurrency race", descriptor.Name);
+                return new AbpMcpToolException(AbpMcpErrorCodes.Conflict, ConflictMessage, dce);
 
             case BusinessException be:
                 // UserFriendlyException inherits BusinessException in ABP, so this branch handles both.

@@ -36,12 +36,17 @@ export type HttpMethods = ReadonlyMap<string, string | null>;
  * The MCP client side of the bridge: one Streamable HTTP session with the AbpMcp host, signed in as the user.
  *
  * Retries follow one rule: a request is sent again only when the host refused it before running anything.
- * That covers a 401 (handled in the fetch) and a 404 for an expired session (reconnect, then retry). A
+ * That covers a 401 (handled in the fetch), a 404 for an expired session (reconnect, then retry), and a
+ * session that could not be opened before a `tools/call` (one more attempt on a fresh session). A
  * `tools/call` that failed any other way after it was sent is reported as possibly run, never re-sent.
  */
 export class Upstream {
   private session?: { readonly client: Client; readonly transport: StreamableHTTPClientTransport };
   private connecting?: Promise<Client>;
+  /** Requests in flight per client, so a replaced session is closed only once they have settled. */
+  private readonly active = new Map<Client, number>();
+  /** Replaced clients waiting for their requests to settle before they are closed. */
+  private readonly retiring = new Set<Client>();
   private readonly fetch: FetchLike;
   private readonly host: string;
 
@@ -96,7 +101,19 @@ export class Upstream {
 
   /** Forward a `tools/call`. See the class remarks for when it is retried. */
   async callTool(params: CallToolRequest["params"], signal?: AbortSignal): Promise<CallToolResult> {
-    const client = await this.beforeSending(this.connect());
+    let client: Client;
+    try {
+      client = await this.beforeSending(this.connect());
+    } catch (error) {
+      // The session never opened, so the call was not sent: one more try on a fresh session is safe.
+      if (!(error instanceof NotSentError) || signal?.aborted) {
+        throw error;
+      }
+
+      this.options.log.info(`Could not open the MCP session; trying once more before calling '${params.name}'`, error);
+      client = await this.beforeSending(this.reconnect(undefined));
+    }
+
     try {
       return await this.callOnce(client, params, signal);
     } catch (error) {
@@ -105,7 +122,7 @@ export class Upstream {
       }
 
       this.options.log.info(`The host ended the MCP session; reconnecting before calling '${params.name}'.`);
-      return await this.callOnce(await this.beforeSending(this.reconnect()), params, signal);
+      return await this.callOnce(await this.beforeSending(this.reconnect(client)), params, signal);
     }
   }
 
@@ -155,6 +172,12 @@ export class Upstream {
       await session.transport.terminateSession().catch(() => undefined);
       await session.client.close().catch(() => undefined);
     }
+
+    for (const client of this.retiring) {
+      await client.close().catch(() => undefined);
+    }
+
+    this.retiring.clear();
   }
 
   private async open(): Promise<Client> {
@@ -180,24 +203,65 @@ export class Upstream {
     return client;
   }
 
-  private async reconnect(): Promise<Client> {
+  /**
+   * Replace the session `failed` belongs to. When another request already replaced it (or it closed), the
+   * current session is used as is: closing it would break the requests already running on it.
+   */
+  private async reconnect(failed: Client | undefined): Promise<Client> {
     const stale = this.session;
-    this.session = undefined;
-    await stale?.client.close().catch(() => undefined);
+    if (failed && stale?.client === failed) {
+      this.session = undefined;
+      await this.retire(stale.client);
+    }
+
     return this.connect();
+  }
+
+  /**
+   * Close a replaced client, or, while other requests are still in flight on it, once they settle: closing it
+   * now would abort them, and a `tools/call` aborted after it was sent is reported as possibly run.
+   */
+  private async retire(client: Client): Promise<void> {
+    if (this.active.has(client)) {
+      this.retiring.add(client);
+      return;
+    }
+
+    await client.close().catch(() => undefined);
+  }
+
+  /** Run a request on `client`, counted as in flight on it. */
+  private async track<T>(client: Client, request: () => Promise<T>): Promise<T> {
+    this.active.set(client, (this.active.get(client) ?? 0) + 1);
+    try {
+      return await request();
+    } finally {
+      const left = (this.active.get(client) ?? 1) - 1;
+      if (left > 0) {
+        this.active.set(client, left);
+      } else {
+        this.active.delete(client);
+        if (this.retiring.delete(client)) {
+          void client.close().catch(() => undefined);
+        }
+      }
+    }
   }
 
   /** For reads only: retry once on a new session after an expired session or a transport failure. */
   private async withReconnect<T>(operation: (client: Client) => Promise<T>): Promise<T> {
+    let client: Client | undefined;
     try {
-      return await operation(await this.connect());
+      const first = client = await this.connect();
+      return await this.track(first, () => operation(first));
     } catch (error) {
       if (error instanceof McpError || isSignInError(error)) {
         throw error;
       }
 
       this.options.log.info("Reconnecting to the host after a failed request", error);
-      return await operation(await this.beforeSending(this.reconnect()));
+      const next = await this.beforeSending(this.reconnect(client));
+      return await this.track(next, () => operation(next));
     }
   }
 
@@ -217,11 +281,11 @@ export class Upstream {
     const forwardAbort = (): void => controller.abort(signal?.reason);
     signal?.addEventListener("abort", forwardAbort, { once: true });
     try {
-      return await callScope.run(scope, () => client.request(
+      return await this.track(client, () => callScope.run(scope, () => client.request(
         { method: "tools/call", params },
         CallToolResultSchema,
         { signal: controller.signal, timeout: this.options.profile.timeoutSeconds * 1000, resetTimeoutOnProgress: true },
-      )) as CallToolResult;
+      ) as Promise<CallToolResult>));
     } catch (error) {
       if (signal?.aborted) {
         throw error;

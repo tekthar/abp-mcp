@@ -1,9 +1,8 @@
-import { execFileSync } from "node:child_process";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import type { Logger } from "../log.js";
 import { KeychainUnavailableError } from "./errors.js";
+import { restrictToCurrentWindowsUser } from "./windows-acl.js";
 
 /** The secrets the bridge can keep for a profile. */
 export type SecretKind = "refresh_token" | "password" | "client_secret";
@@ -68,6 +67,18 @@ export class CredentialVault {
   async deleteRefreshToken(profile: string): Promise<void> {
     await this.keychain?.delete(profile, "refresh_token");
     await this.file.delete(profile, "refresh_token");
+  }
+
+  /**
+   * Delete the stored refresh token only where it still equals `rejected`: compare and delete, so a newer
+   * token that another bridge on the same profile stored in the meantime survives.
+   */
+  async deleteRefreshTokenIf(profile: string, rejected: string): Promise<void> {
+    for (const store of [this.keychain, this.file]) {
+      if (store && await store.get(profile, "refresh_token") === rejected) {
+        await store.delete(profile, "refresh_token");
+      }
+    }
   }
 
   /** A saved password or client secret. Never read from a file. */
@@ -209,6 +220,6 @@ function restrictToCurrentUser(file: string): void {
     return;
   }
 
-  // Remove inherited entries and grant only the current user.
-  execFileSync("icacls", [file, "/inheritance:r", "/grant:r", `${os.userInfo().username}:F`], { stdio: "ignore" });
+  // Remove inherited entries and grant only the current user (by SID, so Entra ID and domain accounts resolve).
+  restrictToCurrentWindowsUser(file);
 }

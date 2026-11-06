@@ -11,11 +11,36 @@ export function launchCommand(profile: string): { command: string; args: string[
   return { command: "npx", args: ["-y", PACKAGE_NAME, "--profile", profile] };
 }
 
+/** The scopes `claude mcp add --scope` accepts. Nothing else may reach the command line (a shell on Windows). */
+export const CLAUDE_CODE_SCOPES = ["user", "project", "local"] as const;
+
+export type ClaudeCodeScope = typeof CLAUDE_CODE_SCOPES[number];
+
+/** True for a scope `install --claude-code` accepts. */
+export function isClaudeCodeScope(scope: string): scope is ClaudeCodeScope {
+  return (CLAUDE_CODE_SCOPES as readonly string[]).includes(scope);
+}
+
+/** How `installClaudeCode` runs `claude`; replaceable in tests. */
+export type SpawnClaude = (command: string, args: string[], options: { stdio: "inherit"; shell: boolean }) => { error?: Error; status: number | null };
+
+export interface ClaudeCodeInstallOptions {
+  readonly name: string;
+  readonly scope: string;
+  readonly spawn?: SpawnClaude;
+  readonly platform?: NodeJS.Platform;
+}
+
 /** Register the profile with Claude Code through `claude mcp add`. */
-export function installClaudeCode(profile: string, options: { name: string; scope: string }, io: Io): boolean {
+export function installClaudeCode(profile: string, options: ClaudeCodeInstallOptions, io: Io): boolean {
+  if (!isClaudeCodeScope(options.scope)) {
+    throw new Error(`'${options.scope}' is not a Claude Code scope: use ${CLAUDE_CODE_SCOPES.join(", ")}.`);
+  }
+
   const launch = launchCommand(profile);
   const args = ["mcp", "add", options.name, "--scope", options.scope, "--", launch.command, ...launch.args];
-  const result = spawnSync("claude", args, { stdio: "inherit", shell: process.platform === "win32" });
+  const spawn = options.spawn ?? spawnSync;
+  const result = spawn("claude", args, { stdio: "inherit", shell: (options.platform ?? process.platform) === "win32" });
   if (result.error || result.status !== 0) {
     io.err("Could not run `claude`. Run this yourself:");
     io.err(`  claude ${args.join(" ")}`);
