@@ -1,4 +1,4 @@
-# abp-mcp-bridge
+# abp-mcp
 
 **Connect Claude Code and Claude Desktop to any ABP app that uses [AbpMcp](https://github.com/tekthar/abp-mcp), signed in as you.**
 
@@ -7,15 +7,15 @@ token fresh, optionally trims the tool list, and forwards every call to the app'
 own permissions decide what you can do: the bridge can hide tools, never unlock them.
 
 ```bash
-npx -y @tekthar/abp-mcp-bridge profiles add staging --url https://staging-api.example.com/mcp \
+npx -y abp-mcp profiles add staging --url https://staging-api.example.com/mcp \
   --stage staging --auth browser --client-id MyApp_Mcp
-npx -y @tekthar/abp-mcp-bridge login staging
-npx -y @tekthar/abp-mcp-bridge install staging --claude-code
+npx -y abp-mcp login staging
+npx -y abp-mcp install staging --claude-code
 ```
 
 ## Why a bridge?
 
-| | Claude connector in the cloud | `claude mcp add --transport http` | **abp-mcp-bridge** |
+| | Claude connector in the cloud | `claude mcp add --transport http` | **abp-mcp** |
 |---|---|---|---|
 | Reaches intranet and VPN-only apps | no | yes | **yes** |
 | Needs MCP-specific OAuth set up on the app | yes | yes, or a pasted token | **no**: uses the app's existing OpenIddict clients |
@@ -144,7 +144,7 @@ bridge's own start with `BRIDGE_`:
 
 | Command | Does |
 |---|---|
-| `abp-mcp-bridge --profile <name>` | Serves the profile over stdio. This is what Claude runs. |
+| `abp-mcp --profile <name>` | Serves the profile over stdio. This is what Claude runs. |
 | `login <profile> [--save-password \| --save-secret]` | Signs in now and keeps the sign-in. |
 | `logout <profile>` | Revokes and forgets the stored sign-in, saved password and any sign-in pause. |
 | `profiles list \| add <name> \| remove <name>` | Edits `profiles.json`. `add` asks for what its flags don't give. |

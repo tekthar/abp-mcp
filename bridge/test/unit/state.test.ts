@@ -152,7 +152,7 @@ describe("install", () => {
       const config = JSON.parse(fs.readFileSync(file, "utf8")) as { mcpServers: Record<string, { command: string; args: string[] }>; theme: string };
       assert.equal(config.theme, "dark");
       assert.ok(config.mcpServers.other);
-      assert.deepEqual(config.mcpServers["library-staging"], { command: "npx", args: ["-y", "@tekthar/abp-mcp-bridge", "--profile", "staging"] });
+      assert.deepEqual(config.mcpServers["library-staging"], { command: "npx", args: ["-y", "abp-mcp", "--profile", "staging"] });
       assert.equal(fs.readdirSync(dir).filter((name) => name.includes(".bak-")).length, 1);
     } finally {
       cleanup();

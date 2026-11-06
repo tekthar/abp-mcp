@@ -1,6 +1,6 @@
 name: Bridge
 
-# abp-mcp-bridge (bridge/) is an npm package released separately from the NuGet package. It runs only when
+# The bridge (bridge/, the abp-mcp npm package) is released separately from the NuGet package. It runs only when
 # the bridge, or the server and sample its end-to-end tests drive, change.
 on:
   push:

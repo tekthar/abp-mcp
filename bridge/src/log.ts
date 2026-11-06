@@ -60,7 +60,7 @@ export class Logger {
     }
 
     const detail = error === undefined ? "" : `: ${describeError(error, this.isDebug)}`;
-    const line = this.options.redactor.redact(`${new Date().toISOString()} abp-mcp-bridge ${level.toUpperCase()} ${message}${detail}`) + "\n";
+    const line = this.options.redactor.redact(`${new Date().toISOString()} abp-mcp ${level.toUpperCase()} ${message}${detail}`) + "\n";
     try {
       this.sink(line);
       if (this.options.file) {

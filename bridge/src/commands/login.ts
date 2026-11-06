@@ -71,7 +71,7 @@ export async function login(runtime: Runtime, options: LoginOptions, io: Io): Pr
     const tools = await upstream.listTools();
     io.out(`The host lists ${tools.length} tool(s) for this user.`);
   } catch (error) {
-    io.err(`Signed in, but listing tools failed: ${(error as Error).message}. Run \`abp-mcp-bridge doctor ${profile.name}\`.`);
+    io.err(`Signed in, but listing tools failed: ${(error as Error).message}. Run \`abp-mcp doctor ${profile.name}\`.`);
   } finally {
     await upstream.close();
   }

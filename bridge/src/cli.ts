@@ -10,22 +10,22 @@ import { profilesPath } from "./paths.js";
 import { loadProfiles } from "./profiles.js";
 import { createRuntime, packageVersion } from "./runtime.js";
 
-const HELP = `abp-mcp-bridge: connect Claude to an AbpMcp endpoint, signed in as you.
+const HELP = `abp-mcp: connect Claude to an AbpMcp endpoint, signed in as you.
 
 Usage:
-  abp-mcp-bridge --profile <name>                 Serve the profile over stdio (what Claude runs)
-  abp-mcp-bridge login <profile> [--save-password | --save-secret]
-                                                  Sign in now and keep the sign-in
-  abp-mcp-bridge logout <profile>                 Forget the stored sign-in
-  abp-mcp-bridge profiles list
-  abp-mcp-bridge profiles add <name> [--url <url>] [--stage development|staging|production]
-                 [--auth browser|password|client_credentials|token|none] [--client-id <id>]
-                 [--authority <url>] [--scope "<scopes>"] [--username <name>]
-                 [--callback-ports 33418,33419] [--preset all|read-only] [--notes "<text>"]
-  abp-mcp-bridge profiles remove <name>
-  abp-mcp-bridge doctor <profile> [--tools]       Check every step up to tools/list
-  abp-mcp-bridge install <profile> --claude-code [--scope user|project|local] [--name <name>]
-  abp-mcp-bridge install <profile> --claude-desktop [--name <name>]
+  abp-mcp --profile <name>                 Serve the profile over stdio (what Claude runs)
+  abp-mcp login <profile> [--save-password | --save-secret]
+                                           Sign in now and keep the sign-in
+  abp-mcp logout <profile>                 Forget the stored sign-in
+  abp-mcp profiles list
+  abp-mcp profiles add <name> [--url <url>] [--stage development|staging|production]
+          [--auth browser|password|client_credentials|token|none] [--client-id <id>]
+          [--authority <url>] [--scope "<scopes>"] [--username <name>]
+          [--callback-ports 33418,33419] [--preset all|read-only] [--notes "<text>"]
+  abp-mcp profiles remove <name>
+  abp-mcp doctor <profile> [--tools]       Check every step up to tools/list
+  abp-mcp install <profile> --claude-code [--scope user|project|local] [--name <name>]
+  abp-mcp install <profile> --claude-desktop [--name <name>]
 
 Profiles live in %APPDATA%\\abp-mcp\\profiles.json (Windows) or ~/.config/abp-mcp/profiles.json.
 
@@ -174,9 +174,9 @@ export async function runCli(): Promise<void> {
       process.exitCode = code;
     }
   } catch (error) {
-    terminalIo.err(`abp-mcp-bridge: ${describeError(error)}`);
+    terminalIo.err(`abp-mcp: ${describeError(error)}`);
     if (error instanceof UsageError || (error as { code?: unknown }).code === "ERR_PARSE_ARGS_UNKNOWN_OPTION") {
-      terminalIo.err("Run `abp-mcp-bridge --help` for usage.");
+      terminalIo.err("Run `abp-mcp --help` for usage.");
     }
 
     process.exitCode = 1;

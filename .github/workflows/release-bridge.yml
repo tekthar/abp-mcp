@@ -1,7 +1,7 @@
 name: Release bridge
 
 # Triggered by a tag of the form bridge-vX.Y.Z. (The NuGet release workflow takes v* tags; the two never
-# collide.) Tests, publishes @tekthar/abp-mcp-bridge to npm with provenance, and creates a GitHub Release
+# collide.) Tests, publishes abp-mcp to npm with provenance, and creates a GitHub Release
 # with the Claude Desktop extension (.mcpb) attached.
 on:
   push:
@@ -77,6 +77,6 @@ jobs:
           ' CHANGELOG.md > release-notes.md
           # --latest=false: the repository's "Latest" release stays the NuGet package's.
           gh release create "${GITHUB_REF_NAME}" "abp-mcp-bridge-${VERSION}.mcpb" \
-            --title "abp-mcp-bridge ${VERSION}" \
+            --title "abp-mcp bridge ${VERSION}" \
             --notes-file release-notes.md \
             --latest=false

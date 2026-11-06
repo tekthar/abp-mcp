@@ -1,6 +1,6 @@
-# abp-mcp-bridge: setting up an app, and how it works
+# The abp-mcp bridge: setting up an app, and how it works
 
-[abp-mcp-bridge](../bridge/README.md) is the client-side companion to AbpMcp: a small Node program on each user's
+[The abp-mcp bridge](../bridge/README.md) (npm package `abp-mcp`) is the client-side companion to AbpMcp: a small Node program on each user's
 machine that Claude Code or Claude Desktop starts over stdio. It signs the user in to the ABP app, keeps the token
 fresh, applies the profile's tool filter, and forwards every call to the app's `/mcp` endpoint as that user.
 
@@ -11,7 +11,7 @@ client of `/mcp`, with the user's own bearer token.
 Claude Code / Claude Desktop
         │  stdio (JSON-RPC)
         ▼
-abp-mcp-bridge --profile staging
+abp-mcp --profile staging
    ├─ sign-in ──────► AuthServer: /connect/authorize, /connect/token   (OpenIddict)
    │      access token in memory; refresh token in the OS keychain
    ├─ tool filter (preset + allow/deny/include; on list AND call)
@@ -34,7 +34,7 @@ await applicationManager.CreateAsync(new OpenIddictApplicationDescriptor
     ClientId = "MyApp_Mcp",
     ClientType = OpenIddictConstants.ClientTypes.Public,
     ConsentType = OpenIddictConstants.ConsentTypes.Implicit,
-    DisplayName = "MyApp for Claude (abp-mcp-bridge)",
+    DisplayName = "MyApp for Claude (abp-mcp)",
     RedirectUris =
     {
         new Uri("http://127.0.0.1:33418/callback"),
@@ -65,7 +65,7 @@ If your redirect URIs must use `localhost`, set `auth.redirectHost` to `localhos
 Users then need only the endpoint URL and the client id:
 
 ```bash
-abp-mcp-bridge profiles add staging --url https://staging-api.example.com/mcp --auth browser --client-id MyApp_Mcp \
+abp-mcp profiles add staging --url https://staging-api.example.com/mcp --auth browser --client-id MyApp_Mcp \
   --authority https://staging-auth.example.com --scope "openid profile offline_access MyApp"
 ```
 
@@ -127,7 +127,7 @@ The bridge is versioned separately from the NuGet package.
 
 1. Update `bridge/package.json`'s `version` and add a `## [X.Y.Z]` section to `bridge/CHANGELOG.md`.
 2. Merge, then push a tag `bridge-vX.Y.Z`. (The NuGet release workflow takes `v*` tags, so the two never collide.)
-3. `.github/workflows/release-bridge.yml` tests the package, publishes `@tekthar/abp-mcp-bridge` to npm with
+3. `.github/workflows/release-bridge.yml` tests the package, publishes `abp-mcp` to npm with
    provenance, builds the Claude Desktop extension, and creates a GitHub Release with the `.mcpb` attached and the
    changelog section as notes.
 

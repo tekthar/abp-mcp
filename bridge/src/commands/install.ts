@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import type { Io } from "../io.js";
 
-export const PACKAGE_NAME = "@tekthar/abp-mcp-bridge";
+export const PACKAGE_NAME = "abp-mcp";
 
 /** The command Claude runs to start the bridge for a profile. */
 export function launchCommand(profile: string): { command: string; args: string[] } {

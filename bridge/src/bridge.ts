@@ -46,7 +46,7 @@ export class Bridge {
     this.filter = new ToolFilter(options.profile.tools);
     const host = options.upstream.serverInfo;
     this.server = new Server(
-      { name: host?.name ?? "abp-mcp-bridge", version: host?.version ?? options.version },
+      { name: host?.name ?? "abp-mcp", version: host?.version ?? options.version },
       {
         capabilities: { tools: { listChanged: true } },
         instructions: buildInstructions(options.profile, options.upstream.instructions),
@@ -210,7 +210,7 @@ export function buildInstructions(profile: Profile, hostInstructions?: string): 
     lines.push(hostInstructions.trim(), "");
   }
 
-  lines.push(`These tools reach ${new URL(profile.url).host} through abp-mcp-bridge, profile '${profile.name}' (${profile.stage}), signed in as the user.`);
+  lines.push(`These tools reach ${new URL(profile.url).host} through the abp-mcp bridge, profile '${profile.name}' (${profile.stage}), signed in as the user.`);
   if (profile.stage === "production") {
     lines.push("PRODUCTION: this is a live system. Before any tool call that changes data, describe the change and get the user's explicit confirmation.");
   } else if (profile.stage === "staging") {
@@ -259,16 +259,16 @@ function errorCode(error: unknown): string {
 /** A message that tells the user what happened and what to do. */
 export function userMessage(error: unknown, profile: Profile): string {
   if (error instanceof StreamableHTTPError && (error.code === 401 || error.code === 403)) {
-    return `The host rejected the sign-in for profile '${profile.name}' (HTTP ${error.code}). Run \`abp-mcp-bridge login ${profile.name}\`.`;
+    return `The host rejected the sign-in for profile '${profile.name}' (HTTP ${error.code}). Run \`abp-mcp login ${profile.name}\`.`;
   }
 
   if (error instanceof OAuthError) {
-    return `Sign-in for profile '${profile.name}' failed (${error.message}). Run \`abp-mcp-bridge doctor ${profile.name}\` for details.`;
+    return `Sign-in for profile '${profile.name}' failed (${error.message}). Run \`abp-mcp doctor ${profile.name}\` for details.`;
   }
 
   if (error instanceof NotSentError || error instanceof MayHaveRunError || error instanceof NotSignedInError || error instanceof BreakerOpenError) {
     return error.message;
   }
 
-  return `${describeError(error)}. Run \`abp-mcp-bridge doctor ${profile.name}\` for details.`;
+  return `${describeError(error)}. Run \`abp-mcp doctor ${profile.name}\` for details.`;
 }

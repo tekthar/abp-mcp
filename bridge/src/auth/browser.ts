@@ -61,7 +61,7 @@ export async function browserSignIn(options: BrowserSignInOptions): Promise<Auth
 
   const code = new Promise<string>((resolve, reject) => {
     const timer = setTimeout(() => reject(new NotSignedInError(
-      `Browser sign-in for profile '${options.profileName}' timed out. Run \`abp-mcp-bridge login ${options.profileName}\` to try again.`)),
+      `Browser sign-in for profile '${options.profileName}' timed out. Run \`abp-mcp login ${options.profileName}\` to try again.`)),
       options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
     timer.unref();
 
@@ -141,5 +141,5 @@ async function listenOnFirstFreePort(ports: readonly number[]): Promise<{ server
 function finish(response: http.ServerResponse, status: number, message: string): void {
   const escaped = message.replace(/[&<>"']/g, (char) => `&#${char.charCodeAt(0)};`);
   response.writeHead(status, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
-  response.end(`<!doctype html><meta charset="utf-8"><title>abp-mcp-bridge</title><p style="font:16px system-ui;margin:2em">${escaped}</p>`);
+  response.end(`<!doctype html><meta charset="utf-8"><title>abp-mcp</title><p style="font:16px system-ui;margin:2em">${escaped}</p>`);
 }

@@ -11,7 +11,7 @@ export function listProfiles(env: NodeJS.ProcessEnv, io: Io): void {
   const file = profilesPath(env);
   const profiles = loadProfiles(file);
   if (profiles.size === 0) {
-    io.out(`No profiles in ${file}. Add one with \`abp-mcp-bridge profiles add <name>\`.`);
+    io.out(`No profiles in ${file}. Add one with \`abp-mcp profiles add <name>\`.`);
     return;
   }
 
@@ -96,7 +96,7 @@ export async function addProfile(name: string, options: AddProfileOptions, env: 
   }
 
   if (type !== "none" && type !== "token") {
-    io.out(`Next: abp-mcp-bridge login ${name}`);
+    io.out(`Next: abp-mcp login ${name}`);
   }
 }
 

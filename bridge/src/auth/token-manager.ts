@@ -188,7 +188,7 @@ export class TokenManager {
       const password = await this.password();
       if (!password) {
         throw new NotSignedInError(
-          `Profile '${name}' is not signed in. Run \`abp-mcp-bridge login ${name}\`, or set ABP_MCP_PASSWORD.`);
+          `Profile '${name}' is not signed in. Run \`abp-mcp login ${name}\`, or set ABP_MCP_PASSWORD.`);
       }
 
       return this.passwordGrant(password);
@@ -198,14 +198,14 @@ export class TokenManager {
       const secret = await this.clientSecret();
       if (!secret) {
         throw new NotSignedInError(
-          `Profile '${name}' has no client secret. Run \`abp-mcp-bridge login ${name} --save-secret\`, or set ABP_MCP_CLIENT_SECRET.`);
+          `Profile '${name}' has no client secret. Run \`abp-mcp login ${name} --save-secret\`, or set ABP_MCP_CLIENT_SECRET.`);
       }
 
       return this.clientCredentialsGrant(secret);
     }
 
     if (!interactive) {
-      throw new NotSignedInError(`Profile '${name}' is not signed in. Run \`abp-mcp-bridge login ${name}\`.`);
+      throw new NotSignedInError(`Profile '${name}' is not signed in. Run \`abp-mcp login ${name}\`.`);
     }
 
     return this.browserGrant();

@@ -72,7 +72,7 @@ export async function doctor(runtime: Runtime, options: DoctorOptions, io: Io): 
       ["Sign-in pause", async () => {
         const status = runtime.breaker.status();
         return status.open
-          ? { ok: false, detail: `paused until ${status.until.toISOString()} (${status.reason})`, fix: `Fix the credentials, then run \`abp-mcp-bridge login ${profile.name}\`.` }
+          ? { ok: false, detail: `paused until ${status.until.toISOString()} (${status.reason})`, fix: `Fix the credentials, then run \`abp-mcp login ${profile.name}\`.` }
           : { ok: true, detail: "not paused" };
       }] as [string, () => Promise<StepResult>],
     ] : []),
@@ -90,7 +90,7 @@ export async function doctor(runtime: Runtime, options: DoctorOptions, io: Io): 
         return {
           ok: false,
           detail: describeError(error),
-          fix: error instanceof NotSignedInError ? `Run \`abp-mcp-bridge login ${profile.name}\`.` : "Check the client id, scopes and credentials.",
+          fix: error instanceof NotSignedInError ? `Run \`abp-mcp login ${profile.name}\`.` : "Check the client id, scopes and credentials.",
         };
       }
     }],
