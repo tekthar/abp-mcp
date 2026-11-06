@@ -4,6 +4,13 @@ import type { Logger } from "../log.js";
 import { KeychainUnavailableError } from "./errors.js";
 import { restrictToCurrentWindowsUser } from "./windows-acl.js";
 
+/** Where `setRefreshToken` stored a token, and why the keychain was skipped when it was. */
+export interface RefreshTokenStored {
+  readonly store: string;
+  /** Set when the keychain refused the value and the file store was used instead. */
+  readonly keychainRefused?: unknown;
+}
+
 /** The secrets the bridge can keep for a profile. */
 export type SecretKind = "refresh_token" | "password" | "client_secret";
 
@@ -55,13 +62,40 @@ export class CredentialVault {
     return (await this.keychain?.get(profile, "refresh_token")) ?? await this.file.get(profile, "refresh_token");
   }
 
-  async setRefreshToken(profile: string, value: string): Promise<void> {
+  /**
+   * Store a refresh token and say where it went. The keychain is preferred; when it refuses the value (Windows
+   * Credential Manager holds at most 2560 bytes, and the keyring library writes UTF-16, so a token over 1280
+   * characters fails, #116), the token goes to the owner-only file store instead, and any older keychain entry
+   * is removed so it cannot shadow the new one.
+   */
+  async setRefreshToken(profile: string, value: string): Promise<RefreshTokenStored> {
     if (this.keychain) {
-      await this.keychain.set(profile, "refresh_token", value);
-      await this.file.delete(profile, "refresh_token");
-    } else {
-      await this.file.set(profile, "refresh_token", value);
+      try {
+        await this.keychain.set(profile, "refresh_token", value);
+        await this.file.delete(profile, "refresh_token");
+        return { store: this.keychain.description };
+      } catch (error) {
+        await this.keychain.delete(profile, "refresh_token").catch(() => undefined);
+        await this.file.set(profile, "refresh_token", value);
+        return { store: this.file.description, keychainRefused: error };
+      }
     }
+
+    await this.file.set(profile, "refresh_token", value);
+    return { store: this.file.description };
+  }
+
+  /** Where this profile's refresh token is kept now, for `doctor` and `login`; the default store when there is none. */
+  async refreshTokenStoreFor(profile: string): Promise<string> {
+    if (this.keychain && await this.keychain.get(profile, "refresh_token")) {
+      return this.keychain.description;
+    }
+
+    if (await this.file.get(profile, "refresh_token")) {
+      return this.file.description;
+    }
+
+    return this.refreshTokenStore;
   }
 
   async deleteRefreshToken(profile: string): Promise<void> {

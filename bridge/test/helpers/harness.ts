@@ -37,7 +37,7 @@ export function tempDir(): { dir: string; cleanup: () => void } {
 
 /** An in-memory stand-in for the OS keychain. */
 export class MemoryKeychain implements SecretStore {
-  readonly description = "a test keychain";
+  readonly description: string = "a test keychain";
   readonly values = new Map<string, string>();
 
   async get(profile: string, kind: SecretKind): Promise<string | null> {

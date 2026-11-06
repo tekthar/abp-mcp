@@ -1,6 +1,19 @@
 /** Sign-in cannot proceed without the user. The message says what to run. */
 export class NotSignedInError extends Error {
-  override readonly name = "NotSignedInError";
+  override readonly name: string = "NotSignedInError";
+}
+
+/**
+ * The host refused (HTTP 401) an access token the bridge had only just obtained (#117). Signing in again would
+ * get the same token, so the cause is the token's scope or audience, not a missing sign-in.
+ */
+export class HostRejectedTokenError extends NotSignedInError {
+  override readonly name = "HostRejectedTokenError";
+}
+
+/** No scope can be requested: the profile sets none and the host advertises none (#117). */
+export class ScopeRequiredError extends NotSignedInError {
+  override readonly name = "ScopeRequiredError";
 }
 
 /** Sign-in is paused after the authorization server rejected the credentials, to avoid locking the account. */

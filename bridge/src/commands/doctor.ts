@@ -68,15 +68,24 @@ export async function doctor(runtime: Runtime, options: DoctorOptions, io: Io): 
             return { ok: false, detail: `${target.server.issuer} has no authorization endpoint.`, fix: "Use password or client_credentials sign-in, or fix the server metadata." };
           }
 
+          if (!scope) {
+            return {
+              ok: false,
+              detail: `issuer ${target.server.issuer}; no scope to request: the profile sets no auth.scope and the host advertises none`,
+              fix: "Set auth.scope to the API scope the host expects, with offline_access for a refresh token.",
+            };
+          }
+
           const notes = [
             `issuer ${target.server.issuer}`,
             `token endpoint ${target.server.tokenEndpoint}`,
             target.resource ? `resource ${target.resource}` : undefined,
-            scope ? `scope "${scope}"` : "no scope configured or advertised: set auth.scope",
-            scope && !scope.split(" ").includes("offline_access") && profile.auth.type !== "client_credentials"
+            `scope "${scope}"`,
+            !scope.split(" ").includes("offline_access") && profile.auth.type !== "client_credentials"
               ? "no offline_access, so no refresh token: add it to auth.scope" : undefined,
+            ...(target.notes ?? []),
           ].filter(Boolean);
-          return { ok: true, detail: notes.join("; ") };
+          return { ok: true, detail: notes.join("; "), ...(target.notes?.length ? { warn: true } : {}) };
         } catch (error) {
           return { ok: false, detail: describeError(error), fix: "Set auth.authority (and auth.scope) in the profile." };
         }
@@ -101,7 +110,7 @@ export async function doctor(runtime: Runtime, options: DoctorOptions, io: Io): 
 
         const claims = decodeJwtClaims(token);
         const who = claims?.preferred_username ?? claims?.unique_name ?? claims?.name ?? claims?.sub;
-        return { ok: true, detail: `${typeof who === "string" ? `signed in as ${who}` : "have a token"}; refresh tokens are kept in ${runtime.vault.refreshTokenStore}` };
+        return { ok: true, detail: `${typeof who === "string" ? `signed in as ${who}` : "have a token"}; refresh tokens are kept in ${await runtime.vault.refreshTokenStoreFor(profile.name)}` };
       } catch (error) {
         return {
           ok: false,

@@ -53,6 +53,11 @@ export class OAuthStub {
   tamperState = false;
   /** Omit offline_access handling: never issue refresh tokens. */
   noRefreshTokens = false;
+  /**
+   * Pad refresh tokens to at least this many characters, like OpenIddict's encrypted self-contained tokens
+   * (longer than Windows Credential Manager's 1280-character limit for UTF-16 values, #116).
+   */
+  refreshTokenLength = 0;
 
   constructor(readonly options: OAuthStubOptions = {}) {}
 
@@ -222,7 +227,7 @@ export class OAuthStub {
     this.accessTokens.set(accessToken, Date.now() + lifetime * 1000);
     const body: Record<string, unknown> = { access_token: accessToken, token_type: "Bearer", expires_in: lifetime };
     if (allowRefresh && !this.noRefreshTokens && scope.split(" ").includes("offline_access")) {
-      const refreshToken = `rt-${randomBytes(12).toString("hex")}`;
+      const refreshToken = `rt-${randomBytes(12).toString("hex")}`.padEnd(this.refreshTokenLength, "x");
       this.issued.push(refreshToken);
       this.refreshTokens.set(refreshToken, { scope, ...(user ? { user } : {}) });
       body.refresh_token = refreshToken;

@@ -111,6 +111,23 @@ the well-known location, the bridge takes the authorization server and scopes fr
 `auth.authority`, `doctor` has a "Protected-resource metadata" step that fails when neither the 401 challenge nor
 the well-known locations name the metadata; [docs/oauth.md](oauth.md) shows how to set it up on the host.
 
+`auth.authority` is only for hosts that publish no metadata. When it is set, it chooses the authorization server, but
+the bridge still reads the host's metadata, if there is any, for the `resource` and the scopes, and warns when the
+authority is not one the host lists. `profiles add` does not ask for an authority when the host publishes metadata.
+The bridge never signs in without a scope: with no `auth.scope` and none advertised, `login` and `doctor` stop and
+say to set `auth.scope`. Without an API scope, the token has no audience the host accepts. When the host answers 401
+to a token the bridge has only just obtained, the bridge reports that the host rejected it (with the host's
+`WWW-Authenticate` error) rather than "not signed in", because signing in again would only get the same token.
+
+### Where the refresh token is kept
+
+The bridge keeps refresh tokens in the OS keychain (macOS Keychain, Windows Credential Manager, libsecret) when there
+is one, and otherwise in an owner-only file under the bridge's config directory. Windows Credential Manager holds at
+most 2560 bytes per secret, which is 1280 characters as stored, and ABP's OpenIddict refresh tokens are longer than
+that. When the keychain refuses a token, the bridge keeps it in the file instead, removes any older keychain entry,
+and says so once. `login` and `doctor` name the store the profile's token is actually in. `ABP_MCP_KEYCHAIN=off`
+always uses the file.
+
 Every discovered URL follows the same rule as the URLs in a profile: https, or plain http only for `localhost`,
 `127.0.0.1` and `[::1]`. That covers the `resource_metadata` URL, the authorization server, and its token,
 authorization and revocation endpoints, whether or not `auth.authority` is set. The bridge also checks that the

@@ -1,3 +1,4 @@
+import { findResourceMetadataUrl, type FetchLike } from "../auth/oauth.js";
 import { SignInBreaker } from "../auth/breaker.js";
 import { CredentialVault } from "../auth/vault.js";
 import type { Io } from "../io.js";
@@ -35,6 +36,8 @@ export interface AddProfileOptions {
   readonly notes?: string;
   /** Ask for whatever is missing. Off when stdin is not a terminal. */
   readonly interactive: boolean;
+  /** For checking whether the host publishes OAuth metadata; `fetch` by default. */
+  readonly fetch?: FetchLike;
 }
 
 /** Add (or replace) a profile, validating it before anything is written. */
@@ -58,7 +61,18 @@ export async function addProfile(name: string, options: AddProfileOptions, env: 
   const auth: Record<string, unknown> = { type };
   if (type === "browser" || type === "password" || type === "client_credentials") {
     auth.clientId = await ask(options.clientId, "OpenIddict client id");
-    const authority = await ask(options.authority, "Authorization server URL (empty to discover it from the host)", "");
+    // A host that publishes RFC 9728 metadata names its authorization server, scopes and resource; an authority
+    // typed here would only override that. Ask only for hosts that publish none (#117).
+    const publishesMetadata = options.authority === undefined && options.interactive
+      && await findResourceMetadataUrl(options.fetch ?? globalThis.fetch, url).then((found) => found !== undefined, () => false);
+    if (publishesMetadata) {
+      io.out("The host publishes its sign-in metadata, so the bridge finds the authorization server, scopes and resource itself.");
+    }
+
+    const authority = publishesMetadata ? undefined : await ask(
+      options.authority,
+      "Authorization server URL (the host publishes no OAuth metadata, so the bridge cannot find it; empty to skip)",
+      "");
     if (authority) {
       auth.authority = authority;
     }
