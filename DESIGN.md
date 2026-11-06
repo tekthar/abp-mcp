@@ -120,7 +120,29 @@ public class ProductAppService : ApplicationService, IProductAppService
 | `GET {path}/_discover` | Lists every exposed tool the caller is authorized for (the `tools/list` gate) with name, description, service, method, parameters, required permissions, JSON schema, and a `disabled` flag. |
 | `GET {path}/_explain?service=Product` | For each method in matching services within `ExposedAssemblies`: `included: true/false` + reason text (which rule decided). Cures "why isn't my tool showing up?" |
 
-Both inherit the host's auth — anonymous access is allowed only when `AllowAnonymous = true` — and the same `Origin` rule as `/mcp`: a browser request from an origin not in `AbpMcpOptions.AllowedOrigins` gets `403`, as the MCP transport spec requires.
+Both inherit the host's auth — anonymous access is allowed only when `AllowAnonymous = true` — and the same `Origin` rule as `/mcp`: a browser request from an origin not in `AbpMcpOptions.AllowedOrigins` gets `403`, as the MCP transport spec requires. `AbpMcpOptions.AuthorizationPolicy` (default `null`, the host's default policy) names one policy that `MapAbpMcp` applies to `/mcp` and both diagnostics endpoints, so they can never be looser than the endpoint whose catalogue they reveal (#96). `MapAbpMcp` still returns only the `/mcp` endpoint's convention builder; a policy added on that return value does not reach the diagnostics endpoints, which is why the option exists.
+
+## Error mapping table
+
+`AbpMcpExceptionMapper` translates every exception a tool raises; the dispatcher has no catch-all of its own. The agent receives `isError: true` with `[CODE] message`. Codes are a wire contract (`AbpMcpErrorCodes`) and stay byte-stable.
+
+| Raised | Code | Message the agent sees |
+|--------|------|------------------------|
+| `AbpValidationException`, argument not matching its schema, missing required argument | `VALIDATION_ERROR` | ABP's message plus each member's error |
+| `AbpAuthorizationException`, failed permission/role/feature check | `FORBIDDEN` | ABP's message, or the ABP code and its data when there is none |
+| `EntityNotFoundException` | `NOT_FOUND` | `There is no {Entity} with id = {id}.` |
+| `AbpDbConcurrencyException` (lost optimistic-concurrency race; REST answers `409`) | `CONFLICT` | Fixed: `The record was changed by someone else since it was read. Read it again and retry with the new values.` The exception's own message can name tables and columns, so it is never sent (#97). |
+| `BusinessException` / `UserFriendlyException` | its own code, else `BUSINESS_ERROR` | its message |
+| `OperationCanceledException` | `CANCELLED` | `Operation cancelled.` |
+| Tool disabled by the kill switch or a disabled global feature | `DISABLED` | names the tool |
+| No tool with that name | `UNKNOWN_TOOL` | names the tool |
+| Anything else | `INTERNAL` | `An internal error occurred.` (logged; no type, message or stack trace leaked) |
+
+EF Core's `DbUpdateConcurrencyException` needs no row: ABP's `AbpDbContext` rethrows it as `AbpDbConcurrencyException` when it saves, so it does not reach the dispatcher unwrapped, and abp-mcp takes no EF Core dependency.
+
+## Transport and multiple instances
+
+The Streamable HTTP transport is stateful by default: a session lives in the memory of the instance that created it, which is what lets `IAbpMcpToolListChangedNotifier` push `notifications/tools/list_changed`. Behind a load balancer without session affinity that breaks (another instance answers `404` for an unknown `Mcp-Session-Id`). `AbpMcpOptions.Stateless` switches the SDK's `HttpServerTransportOptions.SessionMode` to `Stateless` for such deployments, at the cost of server push (#100). It is a boolean rather than the SDK's `HttpServerSessionMode` so the public options stay free of SDK types, mirroring the SDK's own `HttpServerTransportOptions.Stateless` convenience. A host's own `Configure<HttpServerTransportOptions>` still wins, which is how the SDK's third mode, `StatefulForInitializeClients`, or an `ISessionMigrationHandler` is chosen.
 
 ## Exposure rules (v0.1, layers 1, 4, 5 of the v1.0 model)
 

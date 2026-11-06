@@ -49,6 +49,12 @@ public sealed class LibrarySampleModule : AbpModule
     {
         var app = context.GetApplicationBuilder();
         app.UseRouting();
+
+        // The standard ABP host pipeline. The sample allows anonymous MCP calls, so these are no-ops here,
+        // but a host that turns AllowAnonymous off (or sets AbpMcpOptions.AuthorizationPolicy) needs them.
+        app.UseAuthentication();
+        app.UseAuthorization();
+
         app.UseConfiguredEndpoints(endpoints =>
         {
             endpoints.MapGet("/", () =>
