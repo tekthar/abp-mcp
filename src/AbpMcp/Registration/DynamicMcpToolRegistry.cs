@@ -1,4 +1,7 @@
 using AbpMcp.Addins;
+using AbpMcp.Attributes;
+using AbpMcp.Gateway;
+using AbpMcp.Listing;
 using AbpMcp.Metadata;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -19,6 +22,7 @@ internal sealed class DynamicMcpToolRegistry : IDynamicMcpToolRegistry
 {
     private readonly IApiDefinitionReader _reader;
     private readonly IEnumerable<IAbpMcpAddin> _addins;
+    private readonly IToolListingResolver _listing;
     private readonly IServiceProvider _rootServices;
     private readonly AbpMcpOptions _options;
     private readonly ILogger<DynamicMcpToolRegistry> _logger;
@@ -30,12 +34,14 @@ internal sealed class DynamicMcpToolRegistry : IDynamicMcpToolRegistry
     public DynamicMcpToolRegistry(
         IApiDefinitionReader reader,
         IEnumerable<IAbpMcpAddin> addins,
+        IToolListingResolver listing,
         IServiceProvider rootServices,
         IOptions<AbpMcpOptions> options,
         ILogger<DynamicMcpToolRegistry> logger)
     {
         _reader = reader;
         _addins = addins;
+        _listing = listing;
         _rootServices = rootServices;
         _options = options.Value;
         _logger = logger;
@@ -68,8 +74,9 @@ internal sealed class DynamicMcpToolRegistry : IDynamicMcpToolRegistry
         Swap(descriptors);
         _initialized = true;
         _logger.LogInformation(
-            "abp-mcp initialized with {ToolCount} tools: {Tools}",
+            "abp-mcp initialized with {ToolCount} tools ({OnDemandCount} on demand): {Tools}",
             descriptors.Count,
+            descriptors.Count(d => d.Listing == McpToolListing.OnDemand),
             string.Join(", ", descriptors.Select(d => d.Name)));
     }
 
@@ -81,11 +88,38 @@ internal sealed class DynamicMcpToolRegistry : IDynamicMcpToolRegistry
         _logger.LogInformation("abp-mcp tool set refreshed: now {ToolCount} tools.", descriptors.Count);
     }
 
-    /// <summary>Re-read discovery and run the add-in pipeline. No side effects on registry state.</summary>
-    private IReadOnlyList<ToolDescriptor> Discover()
-    {
-        var descriptors = _reader.Read();
+    /// <summary>
+    /// Re-read discovery, run the add-in pipeline, then resolve each tool's listing. No side effects on registry state.
+    /// </summary>
+    private IReadOnlyList<ToolDescriptor> Discover() => ResolveListing(RunAddins(_reader.Read()));
 
+    /// <summary>
+    /// The last step of every build, after the add-ins, so the host's <see cref="AbpMcpOptions.ToolListing"/> patterns
+    /// apply to add-in tools too. Also refuses a tool that takes a gateway tool's name: <c>tools/call</c> could not
+    /// tell the two apart.
+    /// </summary>
+    private IReadOnlyList<ToolDescriptor> ResolveListing(IReadOnlyList<ToolDescriptor> descriptors)
+    {
+        var resolved = new List<ToolDescriptor>(descriptors.Count);
+        foreach (var descriptor in descriptors)
+        {
+            if (AbpMcpGatewayToolNames.IsGatewayTool(descriptor.Name))
+            {
+                throw new AbpMcpConfigurationException(
+                    $"The tool name '{descriptor.Name}' is reserved for abp-mcp's gateway tools " +
+                    $"({string.Join(", ", AbpMcpGatewayToolNames.All)}). Rename the tool with [McpTool(Name = ...)], " +
+                    "AbpMcpOptions.ToolNamePrefix, or in the add-in that contributes it.");
+            }
+
+            var decision = _listing.Resolve(descriptor);
+            resolved.Add(descriptor with { Listing = decision.Listing, ListingReason = decision.Reason });
+        }
+
+        return resolved;
+    }
+
+    private IReadOnlyList<ToolDescriptor> RunAddins(IReadOnlyList<ToolDescriptor> descriptors)
+    {
         var addins = _addins.OrderBy(a => a.Order).ToArray();
         if (addins.Length == 0)
         {

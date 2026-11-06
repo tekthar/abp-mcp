@@ -11,7 +11,8 @@ namespace AbpMcp.Diagnostics;
 
 /// <summary>
 /// Builds the <c>/mcp/_explain</c> exposure decisions: for each app-service method ABP's api-definition
-/// describes, whether abp-mcp exposes it as a tool and the attribute that decided it. <c>[McpTool]</c> services
+/// describes, whether abp-mcp exposes it as a tool and the attribute that decided it, and for an exposed one whether
+/// the tool is listed or on demand and why (<see cref="ToolListingExplainer"/>). <c>[McpTool]</c> services
 /// of the exposed assemblies that the api-definition does not describe get rows too, from
 /// <see cref="UndescribedToolServiceExplainer"/>.
 /// </summary>
@@ -31,6 +32,10 @@ internal static class AbpMcpExposureExplainer
         var allowedAssemblies = options.ExposedAssemblies.IsEmpty
             ? null
             : new HashSet<Assembly>(options.ExposedAssemblies.Select(e => e.Assembly));
+
+        var registry = services.GetRequiredService<IDynamicMcpToolRegistry>();
+        registry.Initialize();
+        var toolsByMethod = ToolListingExplainer.IndexByMethod(registry.Tools);
 
         var rows = new List<object>();
         var describedServiceTypes = new HashSet<Type>();
@@ -71,13 +76,7 @@ internal static class AbpMcpExposureExplainer
                     }
 
                     var (included, reason) = Decide(serviceType, method, classExpose, classIgnore);
-                    rows.Add(new
-                    {
-                        service = serviceType.FullName,
-                        method = method.Name,
-                        included,
-                        reason,
-                    });
+                    rows.Add(ToolListingExplainer.DecisionRow(serviceType, method, included, reason, toolsByMethod));
                 }
             }
         }
