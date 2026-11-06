@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using ModelContextProtocol.Client;
+using Volo.Abp.Modularity.PlugIns;
 
 namespace AbpMcp.IntegrationTests.EndToEnd;
 
@@ -32,16 +33,18 @@ public sealed class SampleHost : IAsyncDisposable
     /// <summary>
     /// Boot the sample. <paramref name="configure"/> runs after the sample module's own options;
     /// <paramref name="configureBuilder"/> runs after the sample's services are registered, so it can
-    /// replace them or add configuration.
+    /// replace them or add configuration. <paramref name="plugInModules"/> are loaded as ABP plug-in modules,
+    /// so a test can add a module (and its assemblies) to the sample's module graph.
     /// </summary>
     public static async Task<SampleHost> StartAsync(
         Action<AbpMcpOptions>? configure = null,
-        Action<WebApplicationBuilder>? configureBuilder = null)
+        Action<WebApplicationBuilder>? configureBuilder = null,
+        params Type[] plugInModules)
     {
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions { EnvironmentName = "Development" });
         builder.WebHost.UseTestServer();
 
-        await builder.Services.AddApplicationAsync<LibrarySampleModule>();
+        await builder.Services.AddApplicationAsync<LibrarySampleModule>(o => o.PlugInSources.AddTypes(plugInModules));
         if (configure is not null)
         {
             builder.Services.Configure(configure);

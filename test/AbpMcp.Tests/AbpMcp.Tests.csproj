@@ -11,10 +11,14 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\AbpMcp\AbpMcp.csproj" />
+    <!-- An *.Application stand-in that references AbpMcp.Abstractions only (#98). -->
+    <ProjectReference Include="..\AbpMcp.Fixtures.Application\AbpMcp.Fixtures.Application.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="coverlet.collector" Version="10.0.0" />
+    <!-- Compiles a stand-in for a binary built against AbpMcp 0.4.x, to test the type forwards (#98). -->
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.14.0" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.11.0" />
     <PackageReference Include="xunit" Version="2.9.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="4.0.1" />

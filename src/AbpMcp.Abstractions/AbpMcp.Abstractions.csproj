@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- The tagging attributes only. No package dependencies, so an ABP *.Application project can mark
+         services [McpTool] without pulling ASP.NET Core, MVC or the MCP SDK into that layer (#98).
+         The root namespace stays AbpMcp so the attributes keep their AbpMcp.Attributes namespace;
+         AbpMcp type-forwards them here, so code and binaries built against AbpMcp 0.4.x keep working. -->
+    <RootNamespace>AbpMcp</RootNamespace>
+    <AssemblyName>AbpMcp.Abstractions</AssemblyName>
+    <PackageId>AbpMcp.Abstractions</PackageId>
+    <Description>The [McpTool] and [McpIgnore] attributes of abp-mcp, with no dependencies. Reference it from your ABP *.Application project to tag services as MCP tools, and reference AbpMcp from the host.</Description>
+    <IsPackable>true</IsPackable>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+</Project>

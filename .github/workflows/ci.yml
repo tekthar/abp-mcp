@@ -97,11 +97,24 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
-      - name: Pack (dry run, ensures the package is producible from main)
+      - name: Pack (dry run, ensures the packages are producible from main)
         run: |
-          dotnet pack src/AbpMcp/AbpMcp.csproj \
-            --configuration Release \
-            -o artifacts
+          for project in src/AbpMcp.Abstractions/AbpMcp.Abstractions.csproj src/AbpMcp/AbpMcp.csproj; do
+            dotnet pack "$project" \
+              --configuration Release \
+              -o artifacts
+          done
+
+      # #98: AbpMcp.Abstractions must stay dependency-free, or tagging a *.Application service pulls
+      # ASP.NET Core back into that layer.
+      - name: Check AbpMcp.Abstractions has no dependencies
+        run: |
+          nuspec="$(unzip -p artifacts/AbpMcp.Abstractions.*.nupkg AbpMcp.Abstractions.nuspec)"
+          if grep -q '<dependency ' <<< "$nuspec"; then
+            echo "::error::AbpMcp.Abstractions must have no package dependencies:"
+            grep '<dependency ' <<< "$nuspec"
+            exit 1
+          fi
 
       - name: Upload nupkg artifact
         uses: actions/upload-artifact@v7
