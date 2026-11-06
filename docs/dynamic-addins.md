@@ -110,7 +110,7 @@ await services.GetRequiredService<IAbpMcpToolListChangedNotifier>()
     .NotifyToolListChangedAsync(cancellationToken);
 ```
 
-Server-initiated notifications need a session to push to, so delivery requires a **non-stateless** HTTP transport (abp-mcp's default). Under the stateless transport each request is its own session and there is nothing to notify after the response; `Refresh()` still works, and the next `tools/list` returns the new set.
+Server-initiated notifications need a session to push to, so delivery requires a **non-stateless** HTTP transport (abp-mcp's default). Under the stateless transport (`AbpMcpOptions.Stateless = true`, for several instances without session affinity; see *Running more than one instance* in the README) each request is its own session and there is nothing to notify after the response; `Refresh()` still works, and the next `tools/list` returns the new set.
 
 ---
 

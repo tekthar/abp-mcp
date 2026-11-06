@@ -303,6 +303,17 @@ sequenceDiagram
 token issued for tenant `T` calls into tenant `T`'s data, and header, cookie or route tenant resolvers work as for any
 ABP endpoint. Cross-tenant impersonation is deliberately not supported.
 
+By default `/mcp`, `/mcp/_discover` and `/mcp/_explain` require the host's default policy, so any authenticated caller
+passes. To let only some tokens reach MCP, for example those carrying an MCP scope, name a policy. It guards all three
+endpoints, so a token that cannot call tools cannot read the tool catalogue either:
+
+```csharp
+Configure<AbpMcpOptions>(opts => opts.AuthorizationPolicy = "McpOnly"); // any policy name, or an ABP permission name
+```
+
+`MapAbpMcp().RequireAuthorization("McpOnly")` is not the same: it covers `/mcp` only. The option is ignored when
+`AllowAnonymous` is true.
+
 ### Browser-based clients
 
 Desktop agents and CLIs send no `Origin` header and connect as they are. A request that carries one, such as the MCP
@@ -332,6 +343,41 @@ Without Setting Management, put it in configuration:
 `{ "Settings": { "AbpMcp.DisabledTools": "Loan_CheckOut,Member_Suspend" } }`. Tenant and user values are ignored.
 
 **In this process only**: add names to `AbpMcpOptions.DisabledTools`. A tool listed in either place is disabled.
+
+### Running more than one instance
+
+MCP sessions are stateful by default, and a session lives in the memory of the instance that created it. Behind a
+load balancer without session affinity, the next request often lands on another instance, which does not know the
+`Mcp-Session-Id` and answers `404`. Clients see intermittent "session not found" failures. Pick one of:
+
+| Option | Cost |
+|---|---|
+| Session affinity at the load balancer | Infrastructure work; a session dies with its instance |
+| `AbpMcpOptions.Stateless = true` | No server push: `tools/list_changed` from `IAbpMcpToolListChangedNotifier` and the kill switch is not pushed to connected agents. They see the new list on their next `tools/list`. |
+| The SDK's `ISessionMigrationHandler` (`HttpServerTransportOptions`) | Stateful, with sessions recoverable across instances, but the host has to store session state somewhere shared |
+
+```csharp
+Configure<AbpMcpOptions>(opts => opts.Stateless = true); // any instance answers any request; no initialize needed
+```
+
+`Stateless` sets the MCP SDK's `HttpServerTransportOptions.SessionMode`. If your module configures
+`HttpServerTransportOptions` itself, that configuration wins.
+
+### Errors the agent sees
+
+A failed tool call returns `isError: true` with `[CODE] message`, so an agent can tell "fix the input" from "retry"
+from "give up". The codes are stable (`AbpMcpErrorCodes`):
+
+| Raised by your service | Code |
+|---|---|
+| `AbpValidationException`, or arguments that do not match the schema | `VALIDATION_ERROR`, with each member's error |
+| `AbpAuthorizationException`, or a failed permission, role or feature check | `FORBIDDEN` |
+| `EntityNotFoundException` | `NOT_FOUND`: `There is no Book with id = …` |
+| `AbpDbConcurrencyException` (the record changed since it was read; REST answers `409`) | `CONFLICT`: `The record was changed by someone else since it was read. Read it again and retry with the new values.` |
+| `BusinessException` / `UserFriendlyException` | its own code, e.g. `LIBRARY:MEMBER_SUSPENDED` (`BUSINESS_ERROR` if it has none) |
+| The call was cancelled | `CANCELLED` |
+| A disabled tool, or an unknown tool name | `DISABLED`, `UNKNOWN_TOOL` |
+| Anything else | `INTERNAL`: `An internal error occurred.` Details are logged, never sent. |
 
 ## Everything else
 
