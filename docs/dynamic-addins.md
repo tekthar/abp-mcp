@@ -90,6 +90,12 @@ public sealed class OverviewAddin : IAbpMcpAddin
 
 See [`samples/AbpMcp.Sample/Library/LibraryInsightsAddin.cs`](../samples/AbpMcp.Sample/Library/LibraryInsightsAddin.cs) for the full runnable example.
 
+To keep a rarely used tool out of `tools/list`, set `Listing = McpToolListing.OnDemand` on its descriptor (or on a
+discovered one with `Enrich`); agents then find it through `mcp_search_tools` and call it through `mcp_call_tool`. The
+host's `AbpMcpOptions.ToolListing` patterns are applied after every add-in and win over the descriptor's value. The
+gateway tool names (`mcp_search_tools`, `mcp_describe_tools`, `mcp_call_tool`, `mcp_call_tools`) are reserved: an
+add-in tool with one of them fails the build of the tool set. See *Large tool sets* in the README.
+
 ### Built-in add-ins
 
 Both are registered by default and demonstrate the two enrichment styles.

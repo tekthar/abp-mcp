@@ -1,6 +1,7 @@
 using System.Reflection;
 using System.Text.Json.Nodes;
 using AbpMcp.Addins;
+using AbpMcp.Attributes;
 using Microsoft.AspNetCore.Authorization;
 
 namespace AbpMcp.Metadata;
@@ -79,4 +80,19 @@ public sealed record ToolDescriptor
     /// or when unknown — the dispatcher then falls back to ABP's method-name convention.
     /// </summary>
     public string? HttpMethod { get; init; }
+
+    /// <summary>
+    /// Whether the tool is advertised in <c>tools/list</c> or kept out of it and found through the gateway tools
+    /// (<c>mcp_search_tools</c>, <c>mcp_call_tool</c>). The descriptor builder sets the value
+    /// <c>[McpTool(Listing = ...)]</c> declares, and an add-in may set it for the tools it contributes or enriches.
+    /// The registry then applies <see cref="AbpMcpOptions.ToolListing"/>, which wins, so in
+    /// <see cref="Registration.IDynamicMcpToolRegistry.Tools"/> this is the effective listing.
+    /// </summary>
+    public McpToolListing Listing { get; init; } = McpToolListing.Listed;
+
+    /// <summary>
+    /// Why the tool has its <see cref="Listing"/>, as <c>/mcp/_explain</c> reports it. Set by the registry when it
+    /// resolves the listing; null before that.
+    /// </summary>
+    internal string? ListingReason { get; init; }
 }

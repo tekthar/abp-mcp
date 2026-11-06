@@ -1,8 +1,5 @@
 using System.Text.Json;
-using AbpMcp.Authorization;
-using AbpMcp.Metadata;
 using AbpMcp.Registration;
-using AbpMcp.Settings;
 using AbpMcp.Transport;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -92,36 +89,11 @@ public static class AbpMcpDiagnosticsEndpoints
     }
 
     /// <summary>
-    /// Lists the tools the caller passes the authorizer for: the same gate <c>tools/list</c> applies, so the
-    /// endpoint never reveals a tool's schema or required permissions to a caller who cannot call it.
-    /// Administratively disabled tools stay listed (flagged) because explaining them is the point here.
+    /// Lists the tools the caller passes the authorizer for (the <c>tools/list</c> gate), with their listing and
+    /// approximate schema cost; see <see cref="AbpMcpDiscoverReport"/>.
     /// </summary>
-    internal static async Task HandleDiscover(HttpContext context)
-    {
-        var registry = context.RequestServices.GetRequiredService<IDynamicMcpToolRegistry>();
-        var authorizer = context.RequestServices.GetRequiredService<IAbpMcpToolAuthorizer>();
-        // Same source as tools/list, so a disabled tool is flagged here exactly when it is hidden there.
-        var disabledTools = await context.RequestServices.GetRequiredService<IDisabledToolsProvider>()
-            .GetDisabledToolsAsync(context.RequestAborted).ConfigureAwait(false);
-        registry.Initialize();
-
-        var rows = new List<object>(registry.Tools.Count);
-        foreach (var tool in registry.Tools)
-        {
-            if ((await authorizer.AuthorizeAsync(tool, context).ConfigureAwait(false)).Succeeded)
-            {
-                rows.Add(ToDiscoveryRow(tool, disabledTools.Contains(tool.Name)));
-            }
-        }
-
-        var response = new
-        {
-            tool_count = rows.Count,
-            tools = rows,
-        };
-
-        await WriteJsonAsync(context, response).ConfigureAwait(false);
-    }
+    internal static async Task HandleDiscover(HttpContext context) =>
+        await WriteJsonAsync(context, await AbpMcpDiscoverReport.BuildAsync(context).ConfigureAwait(false)).ConfigureAwait(false);
 
     internal static async Task HandleExplain(HttpContext context)
     {
@@ -146,30 +118,22 @@ public static class AbpMcpDiagnosticsEndpoints
                 .ToArray(),
             // Tools no caller can use: they require a permission or policy this host does not define.
             undefined_permissions = undefinedPermissions,
+            // The host's listing patterns (AbpMcpOptions.ToolListing); each decision row names the one that applied.
+            tool_listing = new
+            {
+                listed = options.ToolListing.ListedPatterns,
+                on_demand = options.ToolListing.OnDemandPatterns,
+            },
             count = explanations.Count,
             decisions = explanations,
+            // Tools add-ins contribute have no service method, so no decision row; their listing is explained here.
+            dynamic_tools = string.IsNullOrEmpty(serviceFilter)
+                ? ToolListingExplainer.DynamicToolRows(context.RequestServices.GetRequiredService<IDynamicMcpToolRegistry>().Tools)
+                : new List<object>(),
         };
 
         await WriteJsonAsync(context, response).ConfigureAwait(false);
     }
-
-    private static object ToDiscoveryRow(ToolDescriptor tool, bool disabled) => new
-    {
-        name = tool.Name,
-        disabled,
-        description = tool.Description,
-        kind = tool.Handler is not null ? "dynamic" : "service",
-        service = tool.ServiceType?.FullName,
-        method = tool.Method?.Name,
-        http_method = tool.HttpMethod,
-        parameters = tool.ParameterNames,
-        required_permissions = tool.RequiredPermissions,
-        requires_authenticated_user = tool.AuthorizeData.Count > 0,
-        required_roles = tool.AuthorizeData.Select(a => a.Roles).Where(r => !string.IsNullOrEmpty(r)).ToArray(),
-        authentication_schemes = tool.AuthorizeData.Select(a => a.AuthenticationSchemes).Where(s => !string.IsNullOrEmpty(s)).ToArray(),
-        input_schema = tool.InputSchema,
-        output_schema = McpOutputShape.ToProtocolSchema(tool.OutputSchema),
-    };
 
     private static async Task WriteJsonAsync(HttpContext context, object payload)
     {

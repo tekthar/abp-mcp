@@ -6,6 +6,27 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Added
+
+- **On-demand tools and gateway tools** ([#119](https://github.com/tekthar/abp-mcp/issues/119)), so a large tool set no
+  longer fills the agent's context before the first message. A tool marked on demand is left out of `tools/list`;
+  while at least one is, `tools/list` advertises four gateway tools instead: `mcp_search_tools(query, limit?)` (keyword
+  search over every tool the caller may use, with a one-line description, HTTP method, read-only flag and listing per
+  match, no schemas), `mcp_describe_tools(names)` (description and input and output schemas, as `tools/list` would
+  advertise them), `mcp_call_tool(name, arguments)` and `mcp_call_tools(calls, mode)` (up to 20 calls in one request;
+  `sequential` stops at the first error, `parallel` runs them all). Mark tools with `[McpTool(Listing =
+  McpToolListing.OnDemand)]` (the new `McpToolListing` enum is in `AbpMcp.Abstractions`), or from the host with
+  `AbpMcpOptions.ToolListing.OnDemand("Jira*", "*_Delete")` and `.Listed("Jira_GetIssue")`; a `Listed` pin wins over
+  `OnDemand` patterns, and the host's patterns win over the attribute. Search and describe apply the same permission and
+  kill-switch filter as `tools/list`, so a tool the caller cannot use is never found or described, and every gateway call
+  goes through the dispatcher like a direct `tools/call`. Add-ins can set the new `ToolDescriptor.Listing` for their own
+  tools. The gateway tool names are reserved: a tool with one of them fails startup with
+  `AbpMcpConfigurationException`. Nothing changes for a host that marks no tool on demand.
+- `/mcp/_discover` reports each tool's `listing` and an approximate `schema_tokens` cost, the gateway tools, and the
+  token totals of listed, gateway and on-demand tools; `/mcp/_explain` gives each exposed method's tool, `listing` and
+  `listing_reason` (the attribute, or which `ToolListing` pattern), the host's `tool_listing` patterns, and the listing
+  of add-in tools under `dynamic_tools`.
+
 ## [0.5.0] — 2026-11-06
 
 New options for production hosts (one authorization policy for every MCP endpoint, a stateless transport for

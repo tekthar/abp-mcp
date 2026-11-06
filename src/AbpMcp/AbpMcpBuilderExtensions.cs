@@ -2,6 +2,8 @@ using AbpMcp.Addins;
 using AbpMcp.Authorization;
 using AbpMcp.Diagnostics;
 using AbpMcp.Dispatch;
+using AbpMcp.Gateway;
+using AbpMcp.Listing;
 using AbpMcp.Metadata;
 using AbpMcp.Notifications;
 using AbpMcp.Registration;
@@ -50,6 +52,13 @@ public static class AbpMcpBuilderExtensions
         services.TryAddScoped<IAbpMcpDispatcher, AbpMcpDispatcher>();
         services.TryAddSingleton(TimeProvider.System);
         services.TryAddSingleton<IDisabledToolsProvider, DisabledToolsProvider>();
+
+        // Listed vs on-demand tools (AbpMcpOptions.ToolListing, [McpTool(Listing = ...)]), the per-caller gate shared by
+        // tools/list and the gateway, the invoke path shared by tools/call and the gateway, and the gateway tools.
+        services.TryAddSingleton<IToolListingResolver, ToolListingResolver>();
+        services.TryAddTransient<IAbpMcpToolVisibility, AbpMcpToolVisibility>();
+        services.TryAddScoped<IAbpMcpToolInvoker, AbpMcpToolInvoker>();
+        services.TryAddScoped<IAbpMcpToolGateway, AbpMcpToolGateway>();
 
         // Assembly registration: discover [McpTool] assemblies from the ABP module graph, then make sure
         // every exposed assembly is registered with ConventionalControllers so ABP's api-definition sees it.

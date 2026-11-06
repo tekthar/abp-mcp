@@ -117,8 +117,8 @@ public class ProductAppService : ApplicationService, IProductAppService
 
 | Endpoint | Purpose |
 |----------|---------|
-| `GET {path}/_discover` | Lists every exposed tool the caller is authorized for (the `tools/list` gate) with name, description, service, method, parameters, required permissions, JSON schema, and a `disabled` flag. |
-| `GET {path}/_explain?service=Product` | For each method in matching services within `ExposedAssemblies`: `included: true/false` + reason text (which rule decided). Cures "why isn't my tool showing up?" |
+| `GET {path}/_discover` | Lists every exposed tool the caller is authorized for (the `tools/list` gate) with name, description, service, method, parameters, required permissions, JSON schema, a `disabled` flag, its `listing` (`listed` or `on_demand`) and an approximate `schema_tokens` cost; plus the gateway tools and the token totals. |
+| `GET {path}/_explain?service=Product` | For each method in matching services within `ExposedAssemblies`: `included: true/false` + reason text (which rule decided), and for an included one the tool's `listing` and `listing_reason` (the attribute, or which `ToolListing` pattern). Cures "why isn't my tool showing up?" |
 
 Both inherit the host's auth — anonymous access is allowed only when `AllowAnonymous = true` — and the same `Origin` rule as `/mcp`: a browser request from an origin not in `AbpMcpOptions.AllowedOrigins` gets `403`, as the MCP transport spec requires. `AbpMcpOptions.AuthorizationPolicy` (default `null`, the host's default policy) names one policy that `MapAbpMcp` applies to `/mcp` and both diagnostics endpoints, so they can never be looser than the endpoint whose catalogue they reveal (#96). `MapAbpMcp` still returns only the `/mcp` endpoint's convention builder; a policy added on that return value does not reach the diagnostics endpoints, which is why the option exists.
 
@@ -155,11 +155,41 @@ Strict precedence, highest first:
 
 Per-tool kill switch: a tool is disabled if it is in `AbpMcpOptions.DisabledTools` (per process, applied on the next request through `IOptionsMonitor`) or in the `AbpMcp.DisabledTools` ABP setting (global only, shared across instances when ABP Setting Management stores it behind a shared distributed cache, cached per instance for `AbpMcpOptions.DisabledToolsSettingCacheDuration`). `IDisabledToolsProvider` is the single source read by `tools/list`, `tools/call`, the dispatcher and `/mcp/_discover`. abp-mcp reads the setting through ABP's `ISettingProvider`, so it does not depend on the Setting Management module.
 
+## Listing: on-demand tools and the gateway (#119)
+
+Exposure decides whether a method is a tool at all; listing decides whether `tools/list` advertises it. Every listed tool
+costs the agent context before the first message, so a host with hundreds of tools can mark the rarely used ones
+**on demand**: `[McpTool(Listing = McpToolListing.OnDemand)]` (the enum lives in `AbpMcp.Abstractions`, so tagging stays
+dependency-free), or from the host, `AbpMcpOptions.ToolListing.OnDemand(globs)` and `.Listed(globs)`. Precedence,
+highest first: a `Listed` pin, an `OnDemand` pattern, the attribute on the method (else the class) or an add-in's
+`ToolDescriptor.Listing`, the default (listed). One component, `IToolListingResolver`, applies it, once per build of the
+tool set (after the add-ins, so patterns cover add-in tools), and the registry stores the result and its reason on the
+descriptor.
+
+While at least one tool is on demand, `tools/list` also advertises four gateway tools (`AbpMcpGatewayToolNames`, reserved
+names): `mcp_search_tools` (keyword search: tokens split on camelCase, snake_case and dots, fields weighted name >
+service > description, a minimum share of the query's tokens must match; no embeddings, no new dependency),
+`mcp_describe_tools`, `mcp_call_tool` and `mcp_call_tools`. They hold to the same rules as everything else:
+
+- **Rule 3.** `tools/list`, search and describe all filter through one gate (`IAbpMcpToolVisibility`: kill switch, then
+  the authorizer). A tool the caller cannot use is never found or described; describe reports it as `not_found`, like an
+  unknown name.
+- **One call path.** A direct `tools/call`, `mcp_call_tool` and each call of `mcp_call_tools` go through
+  `IAbpMcpToolInvoker` and so through `IAbpMcpDispatcher`: permission check, validation, feature check, unit of work,
+  audit and the error mapping table. Gateway tools cannot be called through the gateway.
+- **No code execution on the server (rule 5).** The gateway runs no model-written code, expression or script inside the
+  ABP host. A code mode in the style of Cloudflare's `@cloudflare/codemode` belongs in a client, such as the bridge, which
+  can compose these tools.
+- **`parallel` means independent, not concurrent.** `mcp_call_tools` in `parallel` mode runs every call whatever the
+  others return, but one at a time: a request's scoped services (an injected `DbContext`, ABP's ambient audit log and
+  its entity-change list) are not safe for concurrent use, and running calls concurrently inside one request would
+  corrupt them on ordinary ABP hosts. The win is one round trip instead of many.
+
 ## Open Questions
 
 1. **Streaming and long-running tools** — how does `AbpMcp` handle app service methods that take > 30s? Background jobs? SignalR streaming? MCP's streamable HTTP transport matters here.
 2. **Authentication model** — for remote MCP (not stdio), how does the agent authenticate? Bearer token from ABP's existing token endpoint? OAuth flow? This is the single most likely blocker for enterprise adoption.
-3. **CRUD service noise** — ABP's `ICrudAppService<T>` produces 6-7 tools per entity. A medium app = 100+ tools. Do we expose them all? Offer a filter attribute? Group under a "bulk" meta-tool? Agents get worse with more tools.
+3. **CRUD service noise** — ABP's `ICrudAppService<T>` produces 6-7 tools per entity. A medium app = 100+ tools. Do we expose them all? Offer a filter attribute? Group under a "bulk" meta-tool? Agents get worse with more tools. *(Partly answered by on-demand tools and the gateway, #119: rarely used tools stay exposed but out of `tools/list`.)*
 4. **DTO validation errors** — how do validation failures surface to the agent? As structured errors or free-text? Agents recover better from structured errors.
 5. **Multi-tenancy UX** — if the agent is running for a specific tenant, how is the tenant context set? Header? Authenticated claim? Explicit tool argument? This affects the shape of every tool.
 
