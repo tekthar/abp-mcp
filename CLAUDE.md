@@ -54,6 +54,8 @@ npm run lint && npm run typecheck && npm test
 ABP_MCP_E2E_URL=http://localhost:5000/mcp npm run test:e2e   # with the sample running
 ```
 
+The authenticated end-to-end tier (`test/e2e/authenticated.test.ts`, #112) needs the sample started with `Sample__Auth__*` settings and `ABP_MCP_E2E_AUTH_URL` / `ABP_MCP_E2E_AUTH_ISSUER_PORT`; `docs/bridge.md` "Developing" has the commands, and the `Bridge` workflow runs both tiers.
+
 TypeScript, Node 22+, `node:test`. The same regression rule applies. The bridge never re-sends a `tools/call` that may have reached the host, and never logs a secret; tests in `test/integration` hold both.
 
 ## Code conventions

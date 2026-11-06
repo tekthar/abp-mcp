@@ -227,4 +227,18 @@ ABP_MCP_E2E_URL=http://localhost:5000/mcp npm run test:e2e   # the built bridge 
 npm run pack:mcpb                                            # the Claude Desktop extension
 ```
 
+The authenticated end-to-end tests (`test/e2e/authenticated.test.ts`) run the same sample with sign-in turned on, set
+up as [MCP OAuth for ABP + OpenIddict](oauth.md) describes, against a stub authorization server the test starts on the
+issuer port. They cover browser sign-in and silent renewal, a user without a permission, `doctor`, and discovery
+against the metadata `AddMcp` serves:
+
+```bash
+ASPNETCORE_URLS=http://127.0.0.1:5002 \
+Sample__Auth__Issuer=http://127.0.0.1:5001 \
+Sample__Auth__Resource=http://127.0.0.1:5002/mcp \
+Sample__Auth__Grants="3a1f0c9e-0d4b-4c5e-9b7a-2f6d8e1c4a01:Library.Members.Delete" \
+dotnet run --project ../samples/AbpMcp.Sample &
+ABP_MCP_E2E_AUTH_URL=http://127.0.0.1:5002/mcp ABP_MCP_E2E_AUTH_ISSUER_PORT=5001 npm run test:e2e
+```
+
 The `Bridge` workflow runs all of it on every pull request that touches `bridge/`, `src/` or `samples/`.

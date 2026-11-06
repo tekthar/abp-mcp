@@ -81,9 +81,35 @@ jobs:
           cat sample.log
           exit 1
 
+      # The same sample, authenticated as docs/oauth.md describes (#112). Its issuer is the stub authorization
+      # server that test/e2e/authenticated.test.ts starts on port 5001; JwtBearer reads its metadata on the first
+      # request that carries a token, so the sample can start first. Alice (below) holds Library.Members.Delete.
+      - name: Start the Library sample, authenticated
+        working-directory: .
+        env:
+          ASPNETCORE_ENVIRONMENT: Development
+          ASPNETCORE_URLS: http://127.0.0.1:5002
+          Sample__Auth__Issuer: http://127.0.0.1:5001
+          Sample__Auth__Resource: http://127.0.0.1:5002/mcp
+          Sample__Auth__Grants: "3a1f0c9e-0d4b-4c5e-9b7a-2f6d8e1c4a01:Library.Members.Delete"
+        run: |
+          dotnet run --project samples/AbpMcp.Sample --no-launch-profile --no-build > sample-auth.log 2>&1 &
+          for attempt in $(seq 1 90); do
+            # Without a token, the MCP endpoints answer 401 with the RFC 9728 challenge.
+            if [ "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:5002/mcp/_discover)" = "401" ]; then
+              echo "The authenticated sample is up."
+              exit 0
+            fi
+            sleep 2
+          done
+          cat sample-auth.log
+          exit 1
+
       - name: End-to-end tests against the sample
         env:
           ABP_MCP_E2E_URL: http://127.0.0.1:5000/mcp
+          ABP_MCP_E2E_AUTH_URL: http://127.0.0.1:5002/mcp
+          ABP_MCP_E2E_AUTH_ISSUER_PORT: "5001"
         run: npm run test:e2e
 
       - name: Check the npm package contents
@@ -102,4 +128,7 @@ jobs:
       - name: Sample log
         if: failure()
         working-directory: .
-        run: cat sample.log || true
+        run: |
+          cat sample.log || true
+          echo "--- authenticated sample ---"
+          cat sample-auth.log || true

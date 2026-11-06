@@ -9,6 +9,7 @@
     <ProjectReference Include="..\..\src\AbpMcp\AbpMcp.csproj" />
     <PackageReference Include="Volo.Abp.AspNetCore.Mvc" Version="$(AbpHostVersion)" />
     <PackageReference Include="Volo.Abp.Autofac" Version="$(AbpHostVersion)" />
+    <PackageReference Include="Volo.Abp.AspNetCore.Authentication.JwtBearer" Version="$(AbpHostVersion)" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="$(EfCoreVersion)" />
   </ItemGroup>
 

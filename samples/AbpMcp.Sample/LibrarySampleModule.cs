@@ -1,9 +1,12 @@
 using AbpMcp.Addins;
+using AbpMcp.Sample.Auth;
 using AbpMcp.Sample.Library;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Volo.Abp;
+using Volo.Abp.AspNetCore.Authentication.JwtBearer;
 using Volo.Abp.AspNetCore.Mvc;
+using Volo.Abp.Authorization.Permissions;
 using Volo.Abp.Autofac;
 using Volo.Abp.Modularity;
 
@@ -19,6 +22,7 @@ namespace AbpMcp.Sample;
 [DependsOn(
     typeof(AbpAutofacModule),
     typeof(AbpAspNetCoreMvcModule),
+    typeof(AbpAspNetCoreAuthenticationJwtBearerModule),
     typeof(AbpMcpModule))]
 public sealed class LibrarySampleModule : AbpModule
 {
@@ -37,10 +41,27 @@ public sealed class LibrarySampleModule : AbpModule
         // This is the extension seam: register any number of IAbpMcpAddin to grow the MCP surface.
         services.AddSingleton<IAbpMcpAddin, LibraryInsightsAddin>();
 
+        // Grants for Library.Members.Delete come from configuration (Sample:Auth:Grants), through ABP's own
+        // permission checker. The anonymous sample has no grants, so Member_Delete stays hidden there.
+        services.AddSingleton<IPermissionStore, SamplePermissionStore>();
+        // Registered explicitly: ABP collects definition providers through OnRegistered hooks, which run only
+        // under the Autofac container, and this sample's Program.cs uses the default one.
+        services.AddTransient<LibraryPermissionDefinitionProvider>();
+        Configure<AbpPermissionOptions>(opts => opts.DefinitionProviders.AddIfNotContains(typeof(LibraryPermissionDefinitionProvider)));
+
+        // Sample:Auth:Issuer switches the sample to authenticated, set up as docs/oauth.md describes.
+        var auth = context.Services.GetConfiguration().GetSection(SampleAuthOptions.Section).Get<SampleAuthOptions>() ?? new SampleAuthOptions();
+        Configure<SampleAuthOptions>(context.Services.GetConfiguration().GetSection(SampleAuthOptions.Section));
+        if (auth.Enabled)
+        {
+            SampleAuthentication.Configure(services, auth);
+        }
+
         Configure<AbpMcpOptions>(opts =>
         {
             opts.Path = "/mcp";
-            opts.AllowAnonymous = true;            // sample only — production hosts inherit ABP auth
+            opts.AllowAnonymous = !auth.Enabled;   // the default sample is anonymous; production hosts inherit ABP auth
+            opts.AuthorizationPolicy = auth.Enabled ? SampleAuthentication.PolicyName : null;
             opts.RequireAtLeastOneTool = true;     // we ship three [McpTool] services so this should hold
         });
     }

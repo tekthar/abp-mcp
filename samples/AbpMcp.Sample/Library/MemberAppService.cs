@@ -1,4 +1,5 @@
 using AbpMcp.Attributes;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using Volo.Abp;
 using Volo.Abp.Application.Services;
@@ -41,6 +42,15 @@ public sealed class MemberAppService : IMemberAppService, ITransientDependency
         var entity = await _db.Members.FindAsync(id).ConfigureAwait(false)
             ?? throw new BusinessException("LIBRARY:MEMBER_NOT_FOUND", $"No member with id {id}.");
         return Map(entity);
+    }
+
+    [Authorize(LibraryPermissions.MembersDelete)]
+    public async Task DeleteAsync(Guid id)
+    {
+        var entity = await _db.Members.FindAsync(id).ConfigureAwait(false)
+            ?? throw new BusinessException("LIBRARY:MEMBER_NOT_FOUND", $"No member with id {id}.");
+        _db.Members.Remove(entity);
+        await _db.SaveChangesAsync().ConfigureAwait(false);
     }
 
     public async Task<IReadOnlyList<MemberDto>> ListAsync()
@@ -93,6 +103,10 @@ public interface IMemberAppService : IApplicationService
     /// <summary>Get a member by id, including whether they are active or suspended.</summary>
     /// <param name="id">The member's unique id.</param>
     Task<MemberDto> GetAsync(Guid id);
+
+    /// <summary>Delete a member. Requires the Library.Members.Delete permission.</summary>
+    /// <param name="id">The member's unique id.</param>
+    Task DeleteAsync(Guid id);
 
     /// <summary>List members in name order (at most 500).</summary>
     Task<IReadOnlyList<MemberDto>> ListAsync();
