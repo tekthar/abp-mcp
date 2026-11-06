@@ -16,6 +16,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- The [McpTool]/[McpIgnore] attributes live here (dependency-free); AbpMcp type-forwards them. -->
+    <ProjectReference Include="..\AbpMcp.Abstractions\AbpMcp.Abstractions.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- Embed the repo README into the .nupkg so nuget.org renders the package page from it. -->
     <None Include="..\..\README.md" Pack="true" PackagePath="\" />
   </ItemGroup>

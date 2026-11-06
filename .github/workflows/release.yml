@@ -67,13 +67,27 @@ jobs:
             --configuration Release \
             --logger "console;verbosity=normal"
 
+      # AbpMcp.Abstractions ships with the same version: AbpMcp's nuspec depends on it.
       - name: Pack
         run: |
-          dotnet pack src/AbpMcp/AbpMcp.csproj \
-            --no-build \
-            --configuration Release \
-            -p:Version=${{ steps.ver.outputs.version }} \
-            -o artifacts
+          for project in src/AbpMcp.Abstractions/AbpMcp.Abstractions.csproj src/AbpMcp/AbpMcp.csproj; do
+            dotnet pack "$project" \
+              --no-build \
+              --configuration Release \
+              -p:Version=${{ steps.ver.outputs.version }} \
+              -o artifacts
+          done
+
+      # AbpMcp.Abstractions exists so *.Application projects can tag services without pulling in ASP.NET
+      # Core (#98). A dependency sneaking into its package would defeat that, so refuse to publish it.
+      - name: Check AbpMcp.Abstractions has no dependencies
+        run: |
+          nuspec="$(unzip -p artifacts/AbpMcp.Abstractions.${{ steps.ver.outputs.version }}.nupkg AbpMcp.Abstractions.nuspec)"
+          if grep -q '<dependency ' <<< "$nuspec"; then
+            echo "::error::AbpMcp.Abstractions must have no package dependencies:"
+            grep '<dependency ' <<< "$nuspec"
+            exit 1
+          fi
 
       # Signing is OPTIONAL and self-healing: it runs only when NUGET_SIGNING_CERTIFICATE_B64 is
       # present AND decodes to a non-empty file. An unset, empty, or malformed secret publishes

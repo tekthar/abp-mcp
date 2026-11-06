@@ -11,6 +11,9 @@
     <ProjectReference Include="..\..\src\AbpMcp\AbpMcp.csproj" />
     <!-- End-to-end tests host the Library sample on an in-memory TestServer and drive it with the SDK's MCP client. -->
     <ProjectReference Include="..\..\samples\AbpMcp.Sample\AbpMcp.Sample.csproj" />
+    <!-- Layered fixtures plugged into the sample: an Abstractions-only *.Application (#98) and an *.HttpApi
+         with a hand-written controller (#101). -->
+    <ProjectReference Include="..\AbpMcp.Fixtures.HttpApi\AbpMcp.Fixtures.HttpApi.csproj" />
   </ItemGroup>
 
   <ItemGroup>
