@@ -57,6 +57,28 @@ public sealed class McpProtocolTests : IAsyncLifetime
         result.StructuredContent.Value.GetProperty("result").ValueKind.Should().Be(JsonValueKind.Array);
     }
 
+    // #86: an active member's suspensionReason is null, and the advertised schema used to say
+    // "type": "string", so validating clients (the TypeScript MCP SDK) rejected every Member_List call.
+    [Fact]
+    public async Task ToolsCall_NullStringInResult_ConformsToTheAdvertisedOutputSchema()
+    {
+        await using var client = await _host.ConnectAsync();
+        var registered = await client.CallToolAsync("Member_Register", new Dictionary<string, object?>
+        {
+            ["input"] = new { name = "Grace Hopper", email = "grace@example.org" },
+        });
+        registered.IsError.Should().NotBe(true, ((TextContentBlock)registered.Content[0]).Text);
+
+        var schema = (await client.ListToolsAsync()).Single(t => t.Name == "Member_List").ProtocolTool.OutputSchema!.Value;
+        var result = await client.CallToolAsync("Member_List");
+
+        result.IsError.Should().NotBe(true);
+        var members = result.StructuredContent!.Value.GetProperty("result").EnumerateArray().ToList();
+        members.Should().Contain(m => m.GetProperty("suspensionReason").ValueKind == JsonValueKind.Null,
+            "an active member has no suspension reason");
+        SchemaConformance.Violations(schema, result.StructuredContent.Value).Should().BeEmpty();
+    }
+
     [Fact]
     public async Task ToolsCall_ObjectResult_StructuredContentIsTheDtoItself()
     {

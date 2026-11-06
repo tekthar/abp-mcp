@@ -1,6 +1,6 @@
 {
   "name": "abp-mcp",
-  "version": "0.2.0",
+  "version": "0.5.0",
   "description": "Connect Claude Code and Claude Desktop to any AbpMcp endpoint, signed in as you: a local stdio bridge with sign-in, token refresh, profiles and tool filtering.",
   "license": "MIT",
   "author": "tekthar",

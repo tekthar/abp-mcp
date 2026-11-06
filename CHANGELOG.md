@@ -6,6 +6,23 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-11-06
+
+New options for production hosts (one authorization policy for every MCP endpoint, a stateless transport for
+load-balanced deployments, a `CONFLICT` error for concurrency races), the dependency-free `AbpMcp.Abstractions`
+package for `*.Application` projects, and output schemas that no longer make validating clients reject results with
+`null` strings.
+
+### Fixed
+
+- **Output schemas admit `null` where a result can carry it** ([#86](https://github.com/tekthar/abp-mcp/issues/86)). A DTO property declared `string?` (or any
+  nullable reference type) was advertised as `"type": "string"`, so a `null` value made `structuredContent` fail its
+  own `outputSchema`, and clients that validate it, such as the TypeScript MCP SDK that Claude Code builds on,
+  rejected the whole call (for example `Member_List` in the sample whenever a member was active). Output schemas now
+  give nullable reference-type properties, collection elements and dictionary values `"type": [T, "null"]`, and treat
+  properties compiled without nullable annotations as nullable. Annotated non-null properties, the schema's root, and
+  input schemas are unchanged. Add-ins can use the new `JsonSchemaMapper.MapOutput` for result types.
+
 ### Added
 
 - **`AbpMcp.Abstractions` package** ([#98](https://github.com/tekthar/abp-mcp/issues/98)): the `[McpTool]` and `[McpIgnore]` attributes, with no dependencies. Reference it from your `*.Application` project and `AbpMcp` from the host, so tagging a service no longer brings ASP.NET Core, MVC and the MCP SDK into the Application layer (which could break code such as an ambiguous `IdentityUser`). The attributes keep the `AbpMcp.Attributes` namespace and `AbpMcp` type-forwards them, so existing source and binaries built against 0.4.x keep working. Auto-discovery also finds assemblies that reference only `AbpMcp.Abstractions`.
@@ -179,7 +196,8 @@ First public pre-release. Functional but pre-alpha — API surface will move bas
 - No Roslyn analyzer yet to flag `[McpTool]` on non-`IApplicationService` types at compile time. Targeted for v0.3.
 - `services.AddAbpMcpAssembly(asm)` already removes the two-step registration friction for the common case. Letting `AbpMcpOptions.ExposedAssemblies.Create(asm)` *itself* auto-register with `ConventionalControllers` (so the lambda-style `Configure<AbpMcpOptions>(...)` form needs no companion call either) is queued for v0.2.
 
-[Unreleased]: https://github.com/tekthar/abp-mcp/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/tekthar/abp-mcp/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/tekthar/abp-mcp/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/tekthar/abp-mcp/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/tekthar/abp-mcp/compare/v0.3.0-alpha...v0.4.0
 [0.3.0-alpha]: https://github.com/tekthar/abp-mcp/compare/v0.2.1-alpha...v0.3.0-alpha
