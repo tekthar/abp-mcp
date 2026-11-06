@@ -41,7 +41,17 @@ public static class JsonSchemaMapper
     private const int MaxDepth = 8;
 
     /// <summary>Map a type to its JSON Schema fragment (no member-level constraints).</summary>
-    public static JsonObject Map(Type type) => MapType(type, new HashSet<Type>(), depth: 0);
+    public static JsonObject Map(Type type) => MapType(type, new HashSet<Type>(), depth: 0, MapMode.Input, info: null);
+
+    /// <summary>
+    /// Map a type a tool <em>returns</em> to its output schema. Like <see cref="Map"/>, except that
+    /// reference-typed properties, collection elements and dictionary values declared nullable
+    /// (<c>string?</c>), or compiled without nullable annotations, admit <c>null</c>
+    /// (<c>"type": ["string", "null"]</c>), so a result that carries <c>null</c> still matches its own
+    /// schema. The root stays as declared: MCP requires the output schema's root to be an object.
+    /// </summary>
+    public static JsonObject MapOutput(Type type) =>
+        MapType(type, new HashSet<Type>(), depth: 0, new MapMode(Output: true, new NullabilityInfoContext()), info: null);
 
     /// <summary>
     /// Map a method parameter: its type schema plus any DataAnnotation constraints declared on the
@@ -62,13 +72,25 @@ public static class JsonSchemaMapper
     public static bool IsRequiredParameter(ParameterInfo parameter) =>
         !parameter.HasDefaultValue && !IsNullable(parameter);
 
-    private static JsonObject MapType(Type type, HashSet<Type> visited, int depth)
+    private static JsonObject MapType(Type type, HashSet<Type> visited, int depth, MapMode mode, NullabilityInfo? info)
     {
         var underlying = Nullable.GetUnderlyingType(type);
         if (underlying is not null)
         {
-            return MakeNullable(MapType(underlying, visited, depth));
+            return MakeNullable(MapType(underlying, visited, depth, mode, info: null));
         }
+
+        if (mode.Output && !IsAnyValue(type) && OutputNullability.AllowsNull(type, info))
+        {
+            // The value may serialize as null: map its non-null shape, then widen it.
+            return MakeNullable(MapNonNull(type, visited, depth, mode, info));
+        }
+
+        return MapNonNull(type, visited, depth, mode, info);
+    }
+
+    private static JsonObject MapNonNull(Type type, HashSet<Type> visited, int depth, MapMode mode, NullabilityInfo? info)
+    {
 
         if (IsAnyValue(type))
         {
@@ -92,16 +114,20 @@ public static class JsonSchemaMapper
             return new JsonObject
             {
                 ["type"] = "object",
-                ["additionalProperties"] = MapType(valueType, visited, depth),
+                ["additionalProperties"] = MapType(valueType, visited, depth, mode, OutputNullability.DictionaryValue(info, valueType)),
             };
         }
 
         if (IsCollection(type, out var elementType) && elementType is not null)
         {
-            return new JsonObject { ["type"] = "array", ["items"] = MapType(elementType, visited, depth) };
+            return new JsonObject
+            {
+                ["type"] = "array",
+                ["items"] = MapType(elementType, visited, depth, mode, OutputNullability.Element(info, elementType)),
+            };
         }
 
-        return MapObject(type, visited, depth);
+        return MapObject(type, visited, depth, mode);
     }
 
     private static bool TryMapScalar(Type type, out JsonObject schema)
@@ -203,7 +229,7 @@ public static class JsonSchemaMapper
         return new JsonObject { ["type"] = "string", ["enum"] = values };
     }
 
-    private static JsonObject MapObject(Type type, HashSet<Type> visited, int depth)
+    private static JsonObject MapObject(Type type, HashSet<Type> visited, int depth, MapMode mode)
     {
         // Cycle guard and depth cap: fall back to an opaque object rather than recurse forever or
         // emit an unusably deep schema.
@@ -238,7 +264,8 @@ public static class JsonSchemaMapper
             }
 
             var name = JsonPropertyName(property);
-            var propertySchema = MapType(property.PropertyType, branch, depth + 1);
+            var propertyInfo = mode.Output ? mode.Nullability!.Create(property) : null;
+            var propertySchema = MapType(property.PropertyType, branch, depth + 1, mode, propertyInfo);
             ApplyValidation(propertySchema, property);
             properties[name] = propertySchema;
 
@@ -427,6 +454,15 @@ public static class JsonSchemaMapper
         // Reference type: honor the declared nullable-reference-type annotation.
         var nullability = new NullabilityInfoContext().Create(parameter);
         return nullability.WriteState == NullabilityState.Nullable;
+    }
+
+    /// <summary>
+    /// Whether this walk builds an output schema, and the nullability reader it uses (one per walk:
+    /// <see cref="NullabilityInfoContext"/> is not thread-safe).
+    /// </summary>
+    private readonly record struct MapMode(bool Output, NullabilityInfoContext? Nullability)
+    {
+        public static MapMode Input => default;
     }
 
     private static T? GetAttribute<T>(ICustomAttributeProvider member) where T : Attribute =>

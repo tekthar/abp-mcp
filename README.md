@@ -420,7 +420,7 @@ The API reference ships as XML documentation, so your editor shows it as you typ
 
 ## Status and roadmap
 
-This is **0.4.1**. It runs in production, but the API may still change before 1.0: minor versions may include breaking
+This is **0.5.0**. It runs in production, but the API may still change before 1.0: minor versions may include breaking
 changes, and the [changelog](https://github.com/tekthar/abp-mcp/blob/main/CHANGELOG.md) describes them. Coming next:
 
 - choosing tools with type and method predicates ([#11](https://github.com/tekthar/abp-mcp/issues/11)) and

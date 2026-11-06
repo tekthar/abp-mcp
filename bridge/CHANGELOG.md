@@ -8,6 +8,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-11-06
+
+A security release: upgrade from 0.2.0 or earlier (and from the deprecated `@tekthar/abp-mcp-bridge`). The version
+jumps from 0.2.0 to 0.5.0 to line up with the `AbpMcp` server release it ships alongside; there are no 0.3 or 0.4
+bridge releases.
+
 ### Security
 
 - **Discovered OAuth URLs now follow the same https rule as the profile's URLs**

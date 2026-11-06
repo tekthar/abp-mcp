@@ -46,7 +46,7 @@ internal sealed class OutputSchemaAddin : IAbpMcpAddin
                 continue;
             }
 
-            var schema = JsonSchemaMapper.Map(resultType);
+            var schema = JsonSchemaMapper.MapOutput(resultType);
             context.Enrich(name, d => d with { OutputSchema = schema });
         }
     }
