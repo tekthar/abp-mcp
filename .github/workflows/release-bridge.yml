@@ -30,13 +30,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
+      # No dependency cache: a job that publishes should not restore files another run wrote.
       - name: Setup Node 22
         uses: actions/setup-node@v7
         with:
           node-version: 22
           registry-url: https://registry.npmjs.org
-          cache: npm
-          cache-dependency-path: bridge/package-lock.json
 
       - name: Check the tag matches package.json
         id: version
