@@ -6,13 +6,6 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
-### Changed
-
-- **Library sample:** a permission-gated `Member_Delete` tool (`Library.Members.Delete`), and an authenticated mode
-  turned on by `Sample:Auth:Issuer`, set up as [docs/oauth.md](docs/oauth.md) describes (JwtBearer, the MCP SDK's
-  RFC 9728 metadata and challenge, `AbpMcpOptions.AuthorizationPolicy`), with permission grants from
-  `Sample:Auth:Grants`. The default sample stays anonymous ([#112](https://github.com/tekthar/abp-mcp/issues/112)).
-
 ## [0.5.0] — 2026-11-06
 
 New options for production hosts (one authorization policy for every MCP endpoint, a stateless transport for
@@ -47,6 +40,17 @@ package for `*.Application` projects, and output schemas that no longer make val
 
 - [MCP OAuth for ABP + OpenIddict](docs/oauth.md) ([#99](https://github.com/tekthar/abp-mcp/issues/99)): letting Claude Code, Claude Desktop and claude.ai connectors sign users in directly (RFC 9728 metadata, a separate MCP audience and scope, OpenIddict resource and client setup, and a deployment checklist).
 - README: "Running more than one instance" (session affinity, `Stateless`, or `ISessionMigrationHandler`) and the error codes an agent sees; DESIGN.md: the error mapping table and the transport section ([#97](https://github.com/tekthar/abp-mcp/issues/97), [#100](https://github.com/tekthar/abp-mcp/issues/100)).
+
+### Sample
+
+- **Library sample:** a permission-gated `Member_Delete` tool (`Library.Members.Delete`), and an authenticated mode
+  turned on by `Sample:Auth:Issuer`, set up as [docs/oauth.md](docs/oauth.md) describes (JwtBearer, the MCP SDK's
+  RFC 9728 metadata and challenge, `AbpMcpOptions.AuthorizationPolicy`), with permission grants from
+  `Sample:Auth:Grants`. The default sample stays anonymous ([#112](https://github.com/tekthar/abp-mcp/issues/112)).
+- **Library sample** runs on the Autofac container (`builder.Host.UseAutofac()`), as a standard ABP host does. Without
+  it ABP's `OnRegistered` hooks never ran: permission definition providers were not collected, and application
+  services got none of ABP's authorization, unit-of-work, validation or auditing interceptors. The sample's
+  application services are no longer `sealed`, so ABP can proxy them.
 
 ## [0.4.1] — 2026-11-06
 
