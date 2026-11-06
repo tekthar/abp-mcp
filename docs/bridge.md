@@ -102,6 +102,11 @@ When a profile has no `auth.authority`, the bridge sends one unauthenticated req
 the well-known location, the bridge takes the authorization server and scopes from it and sends its `resource` value
 (RFC 8707) when signing in. Without it, profiles set `auth.authority` and `auth.scope`, and `doctor` says so.
 
+[MCP OAuth for ABP + OpenIddict](oauth.md) shows how to publish that metadata, register the resource with OpenIddict
+and check the result. The bridge requires `https` for every discovered OAuth URL, a `resource` that matches the
+profile's MCP URL, and an authorization-server `issuer` that matches `authorization_servers[0]` (a trailing slash
+difference is tolerated).
+
 ### The read-only preset needs `/mcp/_discover`
 
 Production profiles default to the `read-only` preset, which shows only tools backed by GET endpoints. The bridge
