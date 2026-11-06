@@ -204,3 +204,12 @@ describe("openInBrowser", () => {
     assert.throws(() => openInBrowser("my-handler://run"), InsecureUrlError);
   });
 });
+
+describe("token requests mask short credentials", () => {
+  it("registers a short password and client secret as credentials", async () => {
+    const redactor = new Redactor();
+    const fetchImpl = async () => Response.json({ access_token: "access-123456" });
+    await requestToken(fetchImpl, "https://auth.example.com/token", { grant_type: "password", password: "pw1", client_secret: "cs2" }, redactor);
+    assert.equal(redactor.redact("got pw1 and cs2"), "got [REDACTED] and [REDACTED]");
+  });
+});

@@ -138,7 +138,7 @@ export class TokenManager {
 
   /** Sign in with a password the user just typed (`login`), optionally saving it to the OS keychain. */
   async signInWithPassword(password: string, save: boolean): Promise<void> {
-    this.options.redactor.add(password);
+    this.options.redactor.addCredential(password);
     this.current = undefined;
     await this.passwordGrant(password);
     if (save) {
@@ -148,7 +148,7 @@ export class TokenManager {
 
   /** Sign in with a client secret the user just typed (`login`), optionally saving it to the OS keychain. */
   async signInWithClientSecret(secret: string, save: boolean): Promise<void> {
-    this.options.redactor.add(secret);
+    this.options.redactor.addCredential(secret);
     this.current = undefined;
     await this.clientCredentialsGrant(secret);
     if (save) {
@@ -377,13 +377,13 @@ export class TokenManager {
 
   private async password(): Promise<string | undefined> {
     const password = this.env.ABP_MCP_PASSWORD || await this.options.vault.getSecret(this.profile.name, "password") || undefined;
-    this.options.redactor.add(password);
+    this.options.redactor.addCredential(password);
     return password;
   }
 
   private async clientSecret(): Promise<string | undefined> {
     const secret = this.env.ABP_MCP_CLIENT_SECRET || await this.options.vault.getSecret(this.profile.name, "client_secret") || undefined;
-    this.options.redactor.add(secret);
+    this.options.redactor.addCredential(secret);
     return secret;
   }
 }

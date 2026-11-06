@@ -10,10 +10,36 @@ describe("redaction", () => {
     assert.equal(redactor.redact("login with hunter2-password failed"), "login with [REDACTED] failed");
   });
 
-  it("ignores values too short to mask safely", () => {
+  it("ignores tokens too short to mask safely", () => {
     const redactor = new Redactor();
     redactor.add("abc");
     assert.equal(redactor.redact("abc"), "abc");
+  });
+
+  it("masks a registered password or client secret of any length (#105)", () => {
+    const redactor = new Redactor();
+    redactor.addCredential("pw1");
+    redactor.addCredential("x");
+    redactor.addCredential("hunter");
+    assert.equal(redactor.redact("The server echoed pw1 in its error"), "The server echoed [REDACTED] in its error");
+    assert.equal(redactor.redact("secret 'x' rejected"), "secret '[REDACTED]' rejected");
+    assert.equal(redactor.redact("user hunter2 typed hunter"), "user [REDACTED]2 typed [REDACTED]");
+  });
+
+  it("masks a short credential only where it stands alone, so the log stays readable", () => {
+    const redactor = new Redactor();
+    redactor.addCredential("ab");
+    redactor.addCredential("1");
+    assert.equal(redactor.redact("about tab ab 21 1 a1b"), "about tab [REDACTED] 21 [REDACTED] a1b");
+  });
+
+  it("never masks the log line's own timestamp and level for a short credential", () => {
+    const redactor = new Redactor();
+    redactor.addCredential("1");
+    redactor.addCredential("INFO");
+    const lines: string[] = [];
+    new Logger({ redactor, sink: (line) => lines.push(line) }).info("password 1 rejected");
+    assert.match(lines[0]!, /^\d{4}-\d\d-\d\dT[\d:.]+Z abp-mcp INFO password \[REDACTED\] rejected\n$/);
   });
 
   it("masks secret-bearing shapes even when the value was never registered", () => {

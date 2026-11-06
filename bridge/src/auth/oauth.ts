@@ -45,7 +45,11 @@ export async function requestToken(
   redactor: Redactor,
   now: () => number = Date.now,
 ): Promise<TokenSet> {
-  for (const key of ["password", "client_secret", "code", "code_verifier", "refresh_token"]) {
+  for (const key of ["password", "client_secret"]) {
+    redactor.addCredential(params[key]);
+  }
+
+  for (const key of ["code", "code_verifier", "refresh_token"]) {
     redactor.add(params[key]);
   }
 

@@ -16,6 +16,13 @@ export interface McpStubOptions {
   readonly discover?: boolean;
   /** Listen on this port instead of a free one, for a host that comes up late at a known address. */
   readonly port?: number;
+  /**
+   * Where the host advertises its RFC 9728 metadata: named in the 401 challenge (the default), only at the
+   * well-known location, or nowhere.
+   */
+  readonly resourceMetadata?: "challenge" | "well-known" | "none";
+  /** Serve `/mcp/_explain` reporting these tools with undefined permissions. */
+  readonly undefinedPermissions?: readonly { tool: string; permission: string }[];
 }
 
 const HTTP_METHODS: Record<string, string | null> = {
@@ -45,6 +52,12 @@ export class McpStub {
   sessionsOpened = 0;
   url = "";
   origin = "";
+  /** Drop the connection on this many `initialize` requests before accepting one. */
+  failInitializations = 0;
+  /** Every `initialize` request that arrived, accepted or dropped. */
+  initializeAttempts = 0;
+  /** Answer `tools/list` with -32603, as AbpMcp 0.4.0 did when one tool had an undefined permission. */
+  failToolsList = false;
 
   constructor(private readonly options: McpStubOptions = {}) {}
 
@@ -91,7 +104,8 @@ export class McpStub {
 
   private async handle(request: http.IncomingMessage, response: http.ServerResponse): Promise<void> {
     const url = new URL(request.url ?? "/", this.origin);
-    if (url.pathname === "/.well-known/oauth-protected-resource/mcp") {
+    const advertise = this.options.resourceMetadata ?? "challenge";
+    if (url.pathname === "/.well-known/oauth-protected-resource/mcp" && advertise !== "none") {
       return json(response, 200, { resource: this.url, authorization_servers: [this.options.issuer], scopes_supported: ["Library", "offline_access"] });
     }
 
@@ -100,7 +114,9 @@ export class McpStub {
       const token = request.headers.authorization?.replace(/^Bearer /, "");
       if (!this.options.isValidToken(token)) {
         response.writeHead(401, {
-          "www-authenticate": `Bearer error="invalid_token", resource_metadata="${this.origin}/.well-known/oauth-protected-resource/mcp"`,
+          "www-authenticate": advertise === "challenge"
+            ? `Bearer error="invalid_token", resource_metadata="${this.origin}/.well-known/oauth-protected-resource/mcp"`
+            : `Bearer error="invalid_token"`,
         }).end();
         return;
       }
@@ -115,12 +131,29 @@ export class McpStub {
       return json(response, 200, { tools: Object.entries(HTTP_METHODS).map(([name, method]) => ({ name, http_method: method })) });
     }
 
+    if (url.pathname === "/mcp/_explain" && this.options.undefinedPermissions) {
+      return json(response, 200, { count: 0, decisions: [], undefined_permissions: this.options.undefinedPermissions });
+    }
+
     if (url.pathname !== "/mcp") {
       response.writeHead(404).end();
       return;
     }
 
     const body = request.method === "POST" ? JSON.parse(await readBody(request)) as unknown : undefined;
+    if (isInitializeRequest(body)) {
+      this.initializeAttempts++;
+      if (this.failInitializations > 0) {
+        this.failInitializations--;
+        response.socket?.destroy();
+        return;
+      }
+    }
+
+    const message = body as { method?: unknown; id?: unknown } | undefined;
+    if (this.failToolsList && message?.method === "tools/list") {
+      return json(response, 200, { jsonrpc: "2.0", id: message.id, error: { code: -32603, message: "An internal error occurred." } });
+    }
     const sessionId = request.headers["mcp-session-id"] as string | undefined;
     let session = sessionId ? this.sessions.get(sessionId) : undefined;
     if (sessionId && !session) {

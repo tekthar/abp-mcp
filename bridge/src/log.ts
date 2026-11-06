@@ -60,7 +60,8 @@ export class Logger {
     }
 
     const detail = error === undefined ? "" : `: ${describeError(error, this.isDebug)}`;
-    const line = this.options.redactor.redact(`${new Date().toISOString()} abp-mcp ${level.toUpperCase()} ${message}${detail}`) + "\n";
+    // The prefix is the bridge's own text: redacting only the rest keeps a short credential from masking the time.
+    const line = `${new Date().toISOString()} abp-mcp ${level.toUpperCase()} ${this.options.redactor.redact(`${message}${detail}`)}\n`;
     try {
       this.sink(line);
       if (this.options.file) {

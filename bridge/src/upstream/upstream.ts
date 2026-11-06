@@ -36,7 +36,8 @@ export type HttpMethods = ReadonlyMap<string, string | null>;
  * The MCP client side of the bridge: one Streamable HTTP session with the AbpMcp host, signed in as the user.
  *
  * Retries follow one rule: a request is sent again only when the host refused it before running anything.
- * That covers a 401 (handled in the fetch) and a 404 for an expired session (reconnect, then retry). A
+ * That covers a 401 (handled in the fetch), a 404 for an expired session (reconnect, then retry), and a
+ * session that could not be opened before a `tools/call` (one more attempt on a fresh session). A
  * `tools/call` that failed any other way after it was sent is reported as possibly run, never re-sent.
  */
 export class Upstream {
@@ -100,7 +101,19 @@ export class Upstream {
 
   /** Forward a `tools/call`. See the class remarks for when it is retried. */
   async callTool(params: CallToolRequest["params"], signal?: AbortSignal): Promise<CallToolResult> {
-    const client = await this.beforeSending(this.connect());
+    let client: Client;
+    try {
+      client = await this.beforeSending(this.connect());
+    } catch (error) {
+      // The session never opened, so the call was not sent: one more try on a fresh session is safe.
+      if (!(error instanceof NotSentError) || signal?.aborted) {
+        throw error;
+      }
+
+      this.options.log.info(`Could not open the MCP session; trying once more before calling '${params.name}'`, error);
+      client = await this.beforeSending(this.reconnect(undefined));
+    }
+
     try {
       return await this.callOnce(client, params, signal);
     } catch (error) {
