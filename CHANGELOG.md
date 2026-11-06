@@ -6,9 +6,20 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [0.4.1] — 2026-11-06
+
+A patch release. Hosts on ABP 10.3 and later boot again, `tools/list_changed` reliably reaches connected agents, one
+tool with an undefined permission no longer breaks `tools/list` for everyone, and the MCP SDK's security fix for
+authenticated sessions is in.
+
+### Security
+
+- **MCP SDK `ModelContextProtocol.AspNetCore` 2.3.0 → 2.3.1** ([#89](https://github.com/tekthar/abp-mcp/pull/89)), a security release that hardens authenticated stateful sessions, the mode abp-mcp runs in. One visible change: a signed-in caller whose principal has no `ClaimTypes.NameIdentifier`, `sub` or UPN claim now gets `403` from `/mcp` instead of a session. User access tokens from ABP's OpenIddict server carry `sub`, so signed-in users are unaffected. If agents call with client-credentials tokens or a custom authentication scheme, check that those tokens carry one of the three claims.
+
 ### Added
 
-- CI job **Test with the host on the newest ABP 10.x**: builds abp-mcp against the floor as before and runs the sample and the integration tests on the newest ABP 10.x (`-p:AbpHostVersion=10.*`; the property defaults to `AbpVersion`), so an ABP change like the one above fails CI instead of a consumer's boot.
+- CI job **Test with the host on the newest ABP 10.x**: builds abp-mcp against the floor as before and runs the sample and the integration tests on the newest ABP 10.x (`-p:AbpHostVersion=10.*`; the property defaults to `AbpVersion`), so an ABP change like the 10.3 one below fails CI instead of a consumer's boot.
+- [abp-mcp-bridge](https://github.com/tekthar/abp-mcp/tree/main/bridge) ([#82](https://github.com/tekthar/abp-mcp/issues/82)): connects Claude Code and Claude Desktop to an AbpMcp endpoint as the signed-in user. It is a separate npm package, released with its own `bridge-v*` tags and [changelog](https://github.com/tekthar/abp-mcp/blob/main/bridge/CHANGELOG.md); the NuGet package does not change for it.
 
 ### Changed
 
@@ -150,7 +161,8 @@ First public pre-release. Functional but pre-alpha — API surface will move bas
 - No Roslyn analyzer yet to flag `[McpTool]` on non-`IApplicationService` types at compile time. Targeted for v0.3.
 - `services.AddAbpMcpAssembly(asm)` already removes the two-step registration friction for the common case. Letting `AbpMcpOptions.ExposedAssemblies.Create(asm)` *itself* auto-register with `ConventionalControllers` (so the lambda-style `Configure<AbpMcpOptions>(...)` form needs no companion call either) is queued for v0.2.
 
-[Unreleased]: https://github.com/tekthar/abp-mcp/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/tekthar/abp-mcp/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/tekthar/abp-mcp/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/tekthar/abp-mcp/compare/v0.3.0-alpha...v0.4.0
 [0.3.0-alpha]: https://github.com/tekthar/abp-mcp/compare/v0.2.1-alpha...v0.3.0-alpha
 [0.2.1-alpha]: https://github.com/tekthar/abp-mcp/compare/v0.1.0-alpha...v0.2.1-alpha
