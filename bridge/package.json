@@ -1,6 +1,6 @@
 {
-  "name": "@tekthar/abp-mcp-bridge",
-  "version": "0.1.0",
+  "name": "abp-mcp",
+  "version": "0.2.0",
   "description": "Connect Claude Code and Claude Desktop to any AbpMcp endpoint, signed in as you: a local stdio bridge with sign-in, token refresh, profiles and tool filtering.",
   "license": "MIT",
   "author": "tekthar",
@@ -23,7 +23,7 @@
   ],
   "type": "module",
   "bin": {
-    "abp-mcp-bridge": "dist/bin.js"
+    "abp-mcp": "dist/bin.js"
   },
   "files": [
     "dist",

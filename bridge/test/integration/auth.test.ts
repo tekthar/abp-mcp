@@ -109,7 +109,7 @@ describe("sign-in", () => {
       await tokens.signInWithPassword("correct horse", false);
       clock.now += 3600_000;
       await assert.rejects(tokens.getAccessToken({ interactive: false }), (error: unknown) =>
-        error instanceof NotSignedInError && /abp-mcp-bridge login/.test(error.message));
+        error instanceof NotSignedInError && /abp-mcp login/.test(error.message));
     } finally {
       oauth.noRefreshTokens = false;
     }

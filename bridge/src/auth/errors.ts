@@ -10,7 +10,7 @@ export class BreakerOpenError extends Error {
   constructor(readonly until: Date, readonly reason: string, profile: string) {
     super(
       `Sign-in for profile '${profile}' is paused until ${until.toISOString()} because the server rejected the ` +
-      `credentials (${reason}). Fix them, then run \`abp-mcp-bridge login ${profile}\` to sign in and clear the pause.`);
+      `credentials (${reason}). Fix them, then run \`abp-mcp login ${profile}\` to sign in and clear the pause.`);
   }
 }
 

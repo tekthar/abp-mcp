@@ -225,7 +225,7 @@ export function resolveProfile(name: string, env: NodeJS.ProcessEnv = process.en
     throw new ProfileError(
       `No profile named '${name}' in ${file}` +
       (known.length > 0 ? ` (known: ${known.join(", ")})` : "") +
-      ". Add one with `abp-mcp-bridge profiles add " + name + "`.");
+      ". Add one with `abp-mcp profiles add " + name + "`.");
   }
 
   return profile;

@@ -158,7 +158,7 @@ export class Upstream {
   }
 
   private async open(): Promise<Client> {
-    const client = new Client({ name: "abp-mcp-bridge", version: this.options.version }, { capabilities: {} });
+    const client = new Client({ name: "abp-mcp", version: this.options.version }, { capabilities: {} });
     client.setNotificationHandler(ToolListChangedNotificationSchema, () => {
       this.options.onToolListChanged();
     });

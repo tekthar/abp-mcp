@@ -113,15 +113,15 @@ claude mcp add --transport http my-app https://your-host/mcp --header "Authoriza
 
 Agents call your tools with the same bearer tokens your ABP identity server issues to every other client.
 
-**Signing in as yourself, without pasting tokens.** [abp-mcp-bridge](https://github.com/tekthar/abp-mcp/tree/main/bridge)
+**Signing in as yourself, without pasting tokens.** The [abp-mcp bridge](https://github.com/tekthar/abp-mcp/tree/main/bridge)
 runs on each user's machine: it signs them in through your existing OpenIddict clients (browser sign-in, or a password
 where needed), keeps the token fresh, reaches intranet and VPN-only hosts, and can limit an environment to read-only
 tools. It comes as an npm package for Claude Code and a one-click extension for Claude Desktop:
 
 ```bash
-npx -y @tekthar/abp-mcp-bridge profiles add staging --url https://staging-api.example.com/mcp --auth browser --client-id MyApp_Mcp
-npx -y @tekthar/abp-mcp-bridge login staging
-npx -y @tekthar/abp-mcp-bridge install staging --claude-code
+npx -y abp-mcp profiles add staging --url https://staging-api.example.com/mcp --auth browser --client-id MyApp_Mcp
+npx -y abp-mcp login staging
+npx -y abp-mcp install staging --claude-code
 ```
 
 ### 4. Check what's exposed
@@ -344,7 +344,7 @@ Every bug fix ships with a test that would have caught it, and CodeQL scans ever
 | Guide | What it covers |
 |---|---|
 | [Dynamic add-ins](https://github.com/tekthar/abp-mcp/blob/main/docs/dynamic-addins.md) | `IAbpMcpAddin`, dynamic tools, enriching tools, changing the tool set at runtime |
-| [abp-mcp-bridge](https://github.com/tekthar/abp-mcp/blob/main/docs/bridge.md) | Connecting Claude Code and Claude Desktop as the signed-in user: the OpenIddict client, token lifetimes, retries |
+| [The abp-mcp bridge](https://github.com/tekthar/abp-mcp/blob/main/docs/bridge.md) | Connecting Claude Code and Claude Desktop as the signed-in user: the OpenIddict client, token lifetimes, retries |
 | [Design](https://github.com/tekthar/abp-mcp/blob/main/DESIGN.md) | Premises, the approaches considered, and what is deliberately out of scope |
 | [Changelog](https://github.com/tekthar/abp-mcp/blob/main/CHANGELOG.md) | What each release changed |
 

@@ -9,7 +9,7 @@ export class MayHaveRunError extends Error {
   constructor(tool: string, host: string, cause: unknown) {
     super(
       `The connection to ${host} failed after the call to '${tool}' was sent, so it may have run. ` +
-      "abp-mcp-bridge never re-sends a call: check the result in the application before trying again.", { cause });
+      "The bridge never re-sends a call: check the result in the application before trying again.", { cause });
   }
 }
 

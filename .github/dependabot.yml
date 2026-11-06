@@ -52,7 +52,7 @@ updates:
         patterns:
           - "*"
 
-  # abp-mcp-bridge (npm). Its runtime dependency is the MCP TypeScript SDK; dev tooling is grouped.
+  # The bridge (bridge/, the abp-mcp npm package). Its runtime dependency is the MCP TypeScript SDK; dev tooling is grouped.
   - package-ecosystem: "npm"
     directory: "/bridge"
     schedule:

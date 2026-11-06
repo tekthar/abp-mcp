@@ -1,14 +1,23 @@
 # Changelog
 
-All notable changes to `@tekthar/abp-mcp-bridge` are documented here. The bridge is versioned separately from the
-`AbpMcp` NuGet package, with tags `bridge-vX.Y.Z`.
+All notable changes to the bridge, the `abp-mcp` npm package, are documented here. It is versioned separately
+from the `AbpMcp` NuGet package, with tags `bridge-vX.Y.Z`.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.1.0]
+## [0.2.0] — 2026-11-06
 
-The first release ([#82](https://github.com/tekthar/abp-mcp/issues/82)).
+### Changed
+
+- **Renamed to `abp-mcp`.** The package is now published unscoped as `abp-mcp`, and the command is `abp-mcp` instead
+  of `abp-mcp-bridge`: `npx -y abp-mcp --profile <name>`. `@tekthar/abp-mcp-bridge` 0.1.0 is deprecated. Run
+  `install --claude-code` or `install --claude-desktop` again to point an existing registration at the new name.
+  Profiles, stored sign-ins and settings carry over unchanged.
+
+## [0.1.0] — 2026-11-06
+
+The first release ([#82](https://github.com/tekthar/abp-mcp/issues/82)), published as `@tekthar/abp-mcp-bridge`.
 
 ### Added
 

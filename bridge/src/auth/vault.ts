@@ -16,6 +16,7 @@ export interface SecretStore {
   delete(profile: string, kind: SecretKind): Promise<void>;
 }
 
+// Kept from 0.1.0, published as @tekthar/abp-mcp-bridge, so stored sign-ins carry over.
 const SERVICE = "abp-mcp-bridge";
 
 /**
@@ -79,7 +80,7 @@ export class CredentialVault {
       throw new KeychainUnavailableError(
         "There is no OS keychain on this machine, so the bridge will not save the " +
         (kind === "password" ? "password" : "client secret") +
-        ". Provide it through an environment variable instead (see `abp-mcp-bridge --help`).");
+        ". Provide it through an environment variable instead (see `abp-mcp --help`).");
     }
 
     await this.keychain.set(profile, kind, value);
