@@ -131,6 +131,40 @@ Anything else after a `tools/call` was sent (a dropped connection, a broken resp
 mean the call ran, so the bridge returns `BRIDGE_CALL_OUTCOME_UNKNOWN` and never re-sends it. `tools/list` and
 `initialize` change nothing, so they are retried once on a fresh session after any transport failure.
 
+When several requests fail on the same expired session, the bridge opens one new session and they all use it; a
+session that was replaced is closed only after the requests still running on it have settled.
+
+## Startup: the app's instructions and `initialize`
+
+Claude reads the server's name and instructions only from `initialize`, once per session. The bridge therefore holds
+its answer to Claude's `initialize` until the session with the app is open, for up to 20 seconds, so Claude sees the
+app's own `serverInfo` and `instructions` (followed by the profile's stage and `notes`). While the app is unreachable,
+the bridge tries again every half second within that window.
+
+- **Browser profile, first run or expired sign-in**: `initialize` starts the browser sign-in (Claude lists the tools
+  right after `initialize`, which would start it anyway). If the user finishes within the window, `initialize` carries
+  the app's instructions. The sign-in is shared with the first `tools/list`, so the browser opens once.
+- **Fallback**: if the session is not open within the window (the app is down, or the user is still in the browser),
+  `initialize` answers with the bridge's own name (`abp-mcp`) and instructions, which say that the app's instructions
+  are missing from this session. The bridge keeps working: the sign-in finishes in the background and the tool list
+  updates by itself. To get the app's instructions, restart the MCP server once the app is reachable (in Claude Code,
+  `/mcp`; in Claude Desktop, restart the app).
+- A sign-in problem the user must fix (no saved credential, paused sign-in) answers at once, with the fallback.
+
+## Several bridges on one profile
+
+Claude Code and Claude Desktop often run the same profile at the same time, sharing its stored refresh token. With
+refresh-token rotation (OpenIddict's default) one bridge can renew with a token the other has just used. When the
+authorization server rejects a refresh token, the bridge reads the stored one again and, if another bridge stored a
+newer one, renews with that once. It deletes the stored refresh token only if it is still the one that was rejected.
+
+## The audit log
+
+`ABP_MCP_AUDIT=1` is best-effort. A failed write (an unwritable directory, a full disk) never changes the result of
+the tool call it describes: the bridge logs one warning and pauses auditing for a minute after each failure. If another
+process holds the file open during rotation (`EPERM`/`EBUSY` on Windows), the bridge skips the rotation and keeps
+appending to the current file.
+
 ## Releasing the bridge
 
 The bridge is versioned separately from the NuGet package.

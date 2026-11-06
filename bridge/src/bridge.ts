@@ -4,9 +4,12 @@ import { StreamableHTTPError } from "@modelcontextprotocol/sdk/client/streamable
 import {
   CallToolRequestSchema,
   ErrorCode,
+  InitializeRequestSchema,
   ListToolsRequestSchema,
   McpError,
   type CallToolResult,
+  type InitializeRequest,
+  type InitializeResult,
   type Tool,
 } from "@modelcontextprotocol/sdk/types.js";
 import { toolErrorCode, type AuditLog, type AuditOutcome } from "./audit.js";
@@ -17,6 +20,7 @@ import { describeError, type Logger } from "./log.js";
 import type { Profile } from "./profiles.js";
 import { MayHaveRunError, NotSentError } from "./upstream/errors.js";
 import type { HttpMethods, Upstream } from "./upstream/upstream.js";
+import { after, openHostSession } from "./startup.js";
 
 export interface BridgeOptions {
   readonly profile: Profile;
@@ -27,9 +31,17 @@ export interface BridgeOptions {
   readonly audit?: AuditLog;
   /** How long `tools/list` waits for a browser sign-in before answering with no tools. */
   readonly signInWaitMs?: number;
+  /**
+   * How long Claude's `initialize` waits for the host session (and, for a browser profile that cannot sign in
+   * silently, the browser sign-in) so it can carry the host's `serverInfo` and `instructions`.
+   */
+  readonly initializeWaitMs?: number;
 }
 
 const DEFAULT_SIGN_IN_WAIT_MS = 20_000;
+export const DEFAULT_INITIALIZE_WAIT_MS = 20_000;
+
+type InitializeHandler = (request: InitializeRequest) => Promise<InitializeResult>;
 
 /**
  * The MCP server Claude talks to over stdio. It forwards `tools/list` and `tools/call` to the host, hides
@@ -41,18 +53,27 @@ export class Bridge {
   private readonly filter: ToolFilter;
   private httpMethods: HttpMethods | undefined;
   private signIn: Promise<void> | undefined;
+  private initialized = false;
 
   constructor(private readonly options: BridgeOptions) {
     this.filter = new ToolFilter(options.profile.tools);
-    const host = options.upstream.serverInfo;
     this.server = new Server(
-      { name: host?.name ?? "abp-mcp", version: host?.version ?? options.version },
-      {
-        capabilities: { tools: { listChanged: true } },
-        instructions: buildInstructions(options.profile, options.upstream.instructions),
-      },
+      { name: "abp-mcp", version: options.version },
+      { capabilities: { tools: { listChanged: true } }, instructions: buildInstructions(options.profile) },
     );
 
+    // The SDK's own initialize (version negotiation, client capabilities), answered once the host is known.
+    const sdkInitialize = (this.server as unknown as { _oninitialize?: InitializeHandler })._oninitialize?.bind(this.server);
+    if (!sdkInitialize) {
+      throw new Error("This version of @modelcontextprotocol/sdk has no Server._oninitialize; the bridge cannot defer initialize.");
+    }
+
+    this.server.setRequestHandler(InitializeRequestSchema, async (request) => {
+      const result = await sdkInitialize(request);
+      const answer = { ...result, ...(await this.describeHost()) };
+      this.initialized = true;
+      return answer;
+    });
     this.server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: await this.listTools() }));
     this.server.setRequestHandler(CallToolRequestSchema, async (request, extra) =>
       this.callTool(request.params.name, request.params.arguments, extra.signal));
@@ -93,9 +114,14 @@ export class Bridge {
 
   async callTool(name: string, args: Record<string, unknown> | undefined, signal?: AbortSignal): Promise<CallToolResult> {
     const started = Date.now();
-    const record = (outcome: AuditOutcome, errorCode?: string): void => this.options.audit?.record({
-      tool: name, outcome, durationMs: Date.now() - started, ...(errorCode ? { errorCode } : {}),
-    });
+    const record = (outcome: AuditOutcome, errorCode?: string): void => {
+      try {
+        this.options.audit?.record({ tool: name, outcome, durationMs: Date.now() - started, ...(errorCode ? { errorCode } : {}) });
+      } catch (error) {
+        // AuditLog.record does not throw; this guards the call's outcome against any audit sink that does.
+        this.options.log.debug("Could not record the tool call in the audit log", error);
+      }
+    };
 
     let decision: FilterDecision;
     try {
@@ -112,11 +138,9 @@ export class Bridge {
         "It was not sent to the host.");
     }
 
+    let result: CallToolResult;
     try {
-      const result = await this.options.upstream.callTool({ name, ...(args ? { arguments: args } : {}) }, signal);
-      const code = result.isError ? toolErrorCode(result) : undefined;
-      record(result.isError ? "tool_error" : "ok", code);
-      return result;
+      result = await this.options.upstream.callTool({ name, ...(args ? { arguments: args } : {}) }, signal);
     } catch (error) {
       if (signal?.aborted) {
         record("cancelled");
@@ -133,6 +157,10 @@ export class Bridge {
       record("failed", errorCode(error));
       return bridgeError(errorCode(error), userMessage(error, this.options.profile));
     }
+
+    // Outside the try: the host ran the call and answered, so nothing after this point may turn it into an error.
+    record(result.isError ? "tool_error" : "ok", result.isError ? toolErrorCode(result) : undefined);
+    return result;
   }
 
   private decide(name: string): FilterDecision {
@@ -169,22 +197,64 @@ export class Bridge {
       return true;
     }
 
+    await Promise.race([this.startSignIn(), after(this.options.signInWaitMs ?? DEFAULT_SIGN_IN_WAIT_MS, undefined)]);
+    return tokens.hasFreshToken();
+  }
+
+  /** Start the browser sign-in, or join the one running. Never rejects. */
+  private startSignIn(): Promise<void> {
+    const { tokens, profile } = this.options;
     this.signIn ??= tokens.getAccessToken({ interactive: true }).then(
       () => {
         this.options.log.info(`Signed in to profile '${profile.name}'.`);
-        this.notifyToolsChanged();
+        // Before Claude's initialize is answered, Claude has not listed anything yet: nothing to announce.
+        if (this.initialized) {
+          this.notifyToolsChanged();
+        }
       },
       (error: unknown) => this.options.log.error(`Sign-in for profile '${profile.name}' failed`, error),
     ).finally(() => {
       this.signIn = undefined;
     });
 
-    await Promise.race([
-      this.signIn,
-      new Promise<void>((resolve) => setTimeout(resolve, this.options.signInWaitMs ?? DEFAULT_SIGN_IN_WAIT_MS).unref()),
-    ]);
+    return this.signIn;
+  }
 
-    return tokens.hasFreshToken();
+  /**
+   * The `serverInfo` and `instructions` for Claude's `initialize`: the host's, once its session is open. A
+   * browser profile that cannot sign in silently starts the browser sign-in here (Claude lists the tools right
+   * after initialize, which would start it anyway). If the host is not reachable, or the user has not finished
+   * signing in, within `initializeWaitMs`, the answer is the bridge's own, and the instructions say so.
+   */
+  private async describeHost(): Promise<Pick<InitializeResult, "serverInfo" | "instructions">> {
+    const { upstream, profile, tokens, log, version } = this.options;
+    const waitMs = this.options.initializeWaitMs ?? DEFAULT_INITIALIZE_WAIT_MS;
+    const deadline = Date.now() + waitMs;
+    const open = async (): Promise<boolean> => {
+      if (upstream.isConnected) {
+        return true;
+      }
+
+      if (profile.auth.type === "browser" && !tokens.hasFreshToken() && (this.signIn || !(await this.hasToken()))) {
+        await this.startSignIn();
+        if (!tokens.hasFreshToken()) {
+          return false;
+        }
+      }
+
+      return openHostSession(upstream, deadline, log);
+    };
+
+    const opened = await Promise.race([open(), after(waitMs, false)]);
+    const host = opened ? upstream.serverInfo : undefined;
+    if (!host) {
+      log.info(`The session with ${new URL(profile.url).host} was not open within ${waitMs} ms; initialize carries the bridge's own information.`);
+    }
+
+    return {
+      serverInfo: host ?? { name: "abp-mcp", version },
+      instructions: buildInstructions(profile, host ? upstream.instructions : undefined, { hostMissing: !host }),
+    };
   }
 
   /** A token without opening the browser: cached, or renewed from the stored sign-in. */
@@ -204,13 +274,17 @@ export class Bridge {
 }
 
 /** What Claude is told about this connection, after the host's own instructions. */
-export function buildInstructions(profile: Profile, hostInstructions?: string): string {
+export function buildInstructions(profile: Profile, hostInstructions?: string, options: { hostMissing?: boolean } = {}): string {
   const lines: string[] = [];
   if (hostInstructions?.trim()) {
     lines.push(hostInstructions.trim(), "");
   }
 
-  lines.push(`These tools reach ${new URL(profile.url).host} through the abp-mcp bridge, profile '${profile.name}' (${profile.stage}), signed in as the user.`);
+  const host = new URL(profile.url).host;
+  lines.push(`These tools reach ${host} through the abp-mcp bridge, profile '${profile.name}' (${profile.stage}), signed in as the user.`);
+  if (options.hostMissing) {
+    lines.push(`The bridge could not reach ${host} (or sign-in was not finished) when this connection started, so the application's own instructions are missing from this session. Restarting this MCP server loads them once the host is reachable.`);
+  }
   if (profile.stage === "production") {
     lines.push("PRODUCTION: this is a live system. Before any tool call that changes data, describe the change and get the user's explicit confirmation.");
   } else if (profile.stage === "staging") {

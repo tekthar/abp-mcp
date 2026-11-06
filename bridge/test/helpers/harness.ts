@@ -6,6 +6,7 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { CallToolResultSchema, type CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { SignInBreaker } from "../../src/auth/breaker.js";
 import type { OpenUrl } from "../../src/auth/browser.js";
+import type { FetchLike } from "../../src/auth/oauth.js";
 import { TokenManager } from "../../src/auth/token-manager.js";
 import { CredentialVault, FileSecretStore, type SecretKind, type SecretStore } from "../../src/auth/vault.js";
 import { AuditLog } from "../../src/audit.js";
@@ -57,8 +58,12 @@ export interface HarnessOptions {
   readonly env?: NodeJS.ProcessEnv;
   readonly openUrl?: OpenUrl;
   readonly keychain?: SecretStore | null;
-  readonly audit?: boolean;
+  /** `true` for an audit log at {@link Harness.auditFile}, or a log built from that path and the harness's logger. */
+  readonly audit?: boolean | ((file: string, log: Logger) => AuditLog);
   readonly signInWaitMs?: number;
+  readonly initializeWaitMs?: number;
+  /** The fetch under the upstream's authentication, to observe or delay requests to the host. */
+  readonly baseFetch?: FetchLike;
 }
 
 /** A bridge wired like `runStdio`, with Claude's side as an in-memory MCP client. */
@@ -93,12 +98,17 @@ export class Harness {
       profile: this.profile, tokens: this.tokens, log: this.log, version: "0.0.0-test",
       interactive: this.profile.auth.type === "browser",
       onToolListChanged: () => late.bridge?.onUpstreamToolsChanged(),
+      ...(options.baseFetch ? { baseFetch: options.baseFetch } : {}),
     });
     this.auditFile = path.join(this.temp.dir, "audit", "test.jsonl");
+    const audit = typeof options.audit === "function"
+      ? options.audit(this.auditFile, this.log)
+      : options.audit ? new AuditLog(this.auditFile, "test", { log: this.log }) : undefined;
     this.bridge = new Bridge({
       profile: this.profile, version: "0.0.0-test", tokens: this.tokens, upstream: this.upstream, log: this.log,
-      ...(options.audit ? { audit: new AuditLog(this.auditFile, "test") } : {}),
+      ...(audit ? { audit } : {}),
       ...(options.signInWaitMs !== undefined ? { signInWaitMs: options.signInWaitMs } : {}),
+      ...(options.initializeWaitMs !== undefined ? { initializeWaitMs: options.initializeWaitMs } : {}),
     });
     late.bridge = this.bridge;
   }

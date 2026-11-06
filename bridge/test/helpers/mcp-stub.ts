@@ -14,6 +14,8 @@ export interface McpStubOptions {
   readonly issuer?: string;
   /** Serve `/mcp/_discover`. */
   readonly discover?: boolean;
+  /** Listen on this port instead of a free one, for a host that comes up late at a known address. */
+  readonly port?: number;
 }
 
 const HTTP_METHODS: Record<string, string | null> = {
@@ -39,6 +41,8 @@ export class McpStub {
   readonly executions = new Map<string, number>();
   /** Authorization header of every request, in order. */
   readonly authorizations: (string | undefined)[] = [];
+  /** How many sessions clients opened (`initialize` requests that created one). */
+  sessionsOpened = 0;
   url = "";
   origin = "";
 
@@ -46,7 +50,7 @@ export class McpStub {
 
   async start(): Promise<this> {
     this.server = http.createServer((request, response) => void this.handle(request, response));
-    await new Promise<void>((resolve) => this.server!.listen(0, "127.0.0.1", resolve));
+    await new Promise<void>((resolve) => this.server!.listen(this.options.port ?? 0, "127.0.0.1", resolve));
     this.origin = `http://127.0.0.1:${(this.server.address() as AddressInfo).port}`;
     this.url = `${this.origin}/mcp`;
     return this;
@@ -137,6 +141,7 @@ export class McpStub {
         return json(response, 400, { jsonrpc: "2.0", error: { code: -32000, message: "No session" }, id: null });
       }
 
+      this.sessionsOpened++;
       const mcp = this.createServer();
       const transport: StreamableHTTPServerTransport = new StreamableHTTPServerTransport({
         sessionIdGenerator: () => randomUUID(),
