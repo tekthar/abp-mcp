@@ -8,14 +8,6 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
-### Tests
-
-- An authenticated end-to-end tier against the Library sample running as docs/oauth.md describes, with the stub
-  authorization server issuing RS256 JWTs: browser sign-in and silent renewal after the access token expires, a user
-  without `Library.Members.Delete` who neither sees nor can call `Member_Delete`, `doctor` passing every step, and
-  discovery passing the https, `resource` and `issuer` checks against the metadata `AddMcp` serves. It runs in the
-  `Bridge` workflow ([#112](https://github.com/tekthar/abp-mcp/issues/112)).
-
 ## [0.5.0] — 2026-11-06
 
 A security release: upgrade from 0.2.0 or earlier (and from the deprecated `@tekthar/abp-mcp-bridge`). The version
@@ -87,6 +79,14 @@ bridge releases.
 - Tests for the remaining #82 acceptance criteria: `install`, debug logging through the real CLI, `doctor` with an open
   breaker, `paths.ts`, `auth.tokenFile`, and no second retry after a second 401 ([#107](https://github.com/tekthar/abp-mcp/issues/107)). The authenticated
   end-to-end tier against a real ABP host is still open.
+
+### Tests
+
+- An authenticated end-to-end tier against the Library sample running as docs/oauth.md describes, with the stub
+  authorization server issuing RS256 JWTs: browser sign-in and silent renewal after the access token expires, a user
+  without `Library.Members.Delete` who neither sees nor can call `Member_Delete`, `doctor` passing every step, and
+  discovery passing the https, `resource` and `issuer` checks against the metadata `AddMcp` serves. It runs in the
+  `Bridge` workflow ([#112](https://github.com/tekthar/abp-mcp/issues/112)).
 
 ## [0.2.0] — 2026-11-06
 

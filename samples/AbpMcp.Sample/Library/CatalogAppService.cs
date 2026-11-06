@@ -12,7 +12,7 @@ namespace AbpMcp.Sample.Library;
 /// a tool unless individually decorated with <c>[McpIgnore]</c>.
 /// </summary>
 [McpTool]
-public sealed class CatalogAppService : ICatalogAppService, ITransientDependency
+public class CatalogAppService : ICatalogAppService, ITransientDependency
 {
     private readonly LibraryDbContext _db;
 

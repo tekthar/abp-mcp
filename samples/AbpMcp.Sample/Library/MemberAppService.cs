@@ -9,7 +9,7 @@ namespace AbpMcp.Sample.Library;
 
 /// <summary>Member registration and lifecycle (active/suspended).</summary>
 [McpTool]
-public sealed class MemberAppService : IMemberAppService, ITransientDependency
+public class MemberAppService : IMemberAppService, ITransientDependency
 {
     private readonly LibraryDbContext _db;
 

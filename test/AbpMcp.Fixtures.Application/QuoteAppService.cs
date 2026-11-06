@@ -22,7 +22,7 @@ public interface IQuoteAppService : IApplicationService
 /// tool <c>Quote_GetOfTheDay</c> without its assembly ever referencing AbpMcp (#98).
 /// </summary>
 [McpTool]
-public sealed class QuoteAppService : IQuoteAppService, ITransientDependency
+public class QuoteAppService : IQuoteAppService, ITransientDependency
 {
     public Task<QuoteDto> GetOfTheDayAsync() =>
         Task.FromResult(new QuoteDto { Text = "A reader lives a thousand lives.", Author = "George R. R. Martin" });

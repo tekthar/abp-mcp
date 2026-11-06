@@ -30,7 +30,7 @@ public interface IMediaAppService : IApplicationService
 /// </summary>
 [McpTool]
 [RemoteService(IsEnabled = false)]
-public sealed class MediaAppService : IMediaAppService, ITransientDependency
+public class MediaAppService : IMediaAppService, ITransientDependency
 {
     public Task<MediaDto> GetAsync(Guid id) =>
         Task.FromResult(new MediaDto { Id = id, FileName = $"cover-{id:N}.png", Length = 2048 });
@@ -47,7 +47,7 @@ public sealed class MediaAppService : IMediaAppService, ITransientDependency
 /// remoted <c>[McpTool]</c> app service that wraps only the JSON-friendly operations and delegates.
 /// </summary>
 [McpTool]
-public sealed class MediaToolsAppService : IApplicationService, ITransientDependency
+public class MediaToolsAppService : IApplicationService, ITransientDependency
 {
     private readonly IMediaAppService _media;
 

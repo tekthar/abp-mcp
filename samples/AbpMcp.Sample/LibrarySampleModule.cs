@@ -44,10 +44,6 @@ public sealed class LibrarySampleModule : AbpModule
         // Grants for Library.Members.Delete come from configuration (Sample:Auth:Grants), through ABP's own
         // permission checker. The anonymous sample has no grants, so Member_Delete stays hidden there.
         services.AddSingleton<IPermissionStore, SamplePermissionStore>();
-        // Registered explicitly: ABP collects definition providers through OnRegistered hooks, which run only
-        // under the Autofac container, and this sample's Program.cs uses the default one.
-        services.AddTransient<LibraryPermissionDefinitionProvider>();
-        Configure<AbpPermissionOptions>(opts => opts.DefinitionProviders.AddIfNotContains(typeof(LibraryPermissionDefinitionProvider)));
 
         // Sample:Auth:Issuer switches the sample to authenticated, set up as docs/oauth.md describes.
         var auth = context.Services.GetConfiguration().GetSection(SampleAuthOptions.Section).Get<SampleAuthOptions>() ?? new SampleAuthOptions();

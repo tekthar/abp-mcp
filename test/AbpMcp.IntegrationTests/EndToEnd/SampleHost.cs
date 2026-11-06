@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
 using ModelContextProtocol.Client;
 using Volo.Abp.Modularity.PlugIns;
@@ -43,6 +44,7 @@ public sealed class SampleHost : IAsyncDisposable
     {
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions { EnvironmentName = "Development" });
         builder.WebHost.UseTestServer();
+        builder.Host.UseAutofac();   // as samples/AbpMcp.Sample/Program.cs
 
         await builder.Services.AddApplicationAsync<LibrarySampleModule>(o => o.PlugInSources.AddTypes(plugInModules));
         if (configure is not null)

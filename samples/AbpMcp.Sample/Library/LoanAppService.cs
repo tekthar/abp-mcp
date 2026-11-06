@@ -11,7 +11,7 @@ namespace AbpMcp.Sample.Library;
 /// surface — this is what makes a video demo feel real.
 /// </summary>
 [McpTool]
-public sealed class LoanAppService : ILoanAppService, ITransientDependency
+public class LoanAppService : ILoanAppService, ITransientDependency
 {
     private readonly LibraryDbContext _db;
 
