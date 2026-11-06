@@ -94,14 +94,14 @@ describe("discovery refuses insecure or mismatched metadata", () => {
     const { fetchImpl, requested } = fakeFetch({ challenge: "http://evil.example.com/prm" });
     await assert.rejects(discoverSignIn(fetchImpl, MCP), (error: unknown) =>
       error instanceof InsecureUrlError && /resource_metadata/.test(error.message));
-    assert.ok(!requested.some((r) => r.url.startsWith("http://evil")), "the insecure URL was never fetched");
+    assert.ok(!requested.some((r) => new URL(r.url).origin === "http://evil.example.com"), "the insecure URL was never fetched");
   });
 
   it("refuses an http authorization server", async () => {
     const { fetchImpl, requested } = fakeFetch({ resourceMetadata: { resource: MCP, authorization_servers: ["http://auth.example.com"] } });
     await assert.rejects(discoverSignIn(fetchImpl, MCP), (error: unknown) =>
       error instanceof InsecureUrlError && /authorization_servers\[0\]/.test(error.message));
-    assert.ok(!requested.some((r) => r.url.startsWith("http://auth")));
+    assert.ok(!requested.some((r) => new URL(r.url).origin === "http://auth.example.com"));
   });
 
   for (const field of ["token_endpoint", "authorization_endpoint", "revocation_endpoint"]) {
@@ -127,7 +127,7 @@ describe("discovery refuses insecure or mismatched metadata", () => {
   it("refuses a resource that does not match the MCP URL", async () => {
     const { fetchImpl, requested } = fakeFetch({ resourceMetadata: { resource: "https://other.example.com/mcp", authorization_servers: [ISSUER] } });
     await assert.rejects(discoverSignIn(fetchImpl, MCP), /RFC 9728 section 3\.3/);
-    assert.ok(!requested.some((r) => r.url.startsWith(ISSUER)), "the authorization server was never contacted");
+    assert.ok(!requested.some((r) => new URL(r.url).origin === new URL(ISSUER).origin), "the authorization server was never contacted");
   });
 
   it("refuses resource metadata without a resource", async () => {
