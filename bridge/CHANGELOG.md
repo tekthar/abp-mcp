@@ -8,6 +8,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Fixed
+
+- **Linux without a desktop keyring: the sign-in no longer disappears at reboot.** On Linux, `@napi-rs/keyring`
+  falls back silently from the Secret Service (gnome-keyring, KWallet, KeePassXC) to the kernel keyutils keyring,
+  which is cleared at every reboot. On a server or WSL without a Secret Service, the bridge used that keyring and
+  deleted its file copy, so every reboot meant signing in again. The bridge now pins the keychain to the Secret
+  Service; without one it keeps refresh tokens in its owner-only file. On such a machine, run `abp-mcp login` once
+  after upgrading: a token the old version kept in the kernel keyring is not carried over (it would not survive the
+  next reboot anyway).
+
 ### Added
 
 - **Gateway mode** ([#120](https://github.com/tekthar/abp-mcp/issues/120)): `tools.gateway` (or `ABP_MCP_GATEWAY=on`) lists only the pinned tools plus

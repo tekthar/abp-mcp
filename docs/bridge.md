@@ -125,7 +125,9 @@ The bridge keeps refresh tokens in the OS keychain (macOS Keychain, Windows Cred
 is one, and otherwise in an owner-only file under the bridge's config directory. Windows Credential Manager holds at
 most 2560 bytes per secret, which is 1280 characters as stored, and ABP's OpenIddict refresh tokens are longer than
 that. When the keychain refuses a token, the bridge keeps it in the file instead, removes any older keychain entry,
-and says so once. `login` and `doctor` name the store the profile's token is actually in. `ABP_MCP_KEYCHAIN=off`
+and says so once. On Linux the keychain means the Secret Service (gnome-keyring, KWallet, KeePassXC) only: the
+library's fallback, the kernel keyring, is cleared at every reboot, so a machine without a Secret Service (a server,
+WSL) uses the file. `login` and `doctor` name the store the profile's token is actually in. `ABP_MCP_KEYCHAIN=off`
 always uses the file.
 
 Every discovered URL follows the same rule as the URLs in a profile: https, or plain http only for `localhost`,
