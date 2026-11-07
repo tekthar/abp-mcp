@@ -48,8 +48,11 @@ internal sealed class ToolSearchIndex
     public static int RequiredMatches(int queryTokenCount) =>
         queryTokenCount <= 2 ? queryTokenCount : (int)Math.Ceiling(queryTokenCount * LongQueryCoverage);
 
-    /// <summary>Every tool that meets the coverage rule for <paramref name="query"/>, best first (ties by name).</summary>
-    public IReadOnlyList<ToolSearchMatch> Search(string query)
+    /// <summary>
+    /// Every tool that meets the coverage rule for <paramref name="query"/>, best first (ties by name). Stops with
+    /// <see cref="OperationCanceledException"/> once <paramref name="cancellationToken"/> is cancelled.
+    /// </summary>
+    public IReadOnlyList<ToolSearchMatch> Search(string query, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(query);
 
@@ -64,6 +67,7 @@ internal sealed class ToolSearchIndex
         var matches = new List<ToolSearchMatch>();
         foreach (var entry in _entries)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var (matched, score) = ScoreTokens(entry, tokens);
             if (matched < required)
             {

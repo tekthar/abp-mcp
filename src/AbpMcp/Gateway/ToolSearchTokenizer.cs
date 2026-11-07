@@ -43,7 +43,14 @@ internal static class ToolSearchTokenizer
     }
 
     /// <summary>
-    /// The distinct tokens of a query, in order. Stop words are dropped unless nothing else is left.
+    /// Most distinct query tokens a search scores; later ones are ignored. Scoring costs tokens × tools, and a query
+    /// longer than this practically never meets the coverage rule anyway.
+    /// </summary>
+    public const int MaxQueryTokens = 32;
+
+    /// <summary>
+    /// The distinct tokens of a query, in order, at most <see cref="MaxQueryTokens"/>. Stop words are dropped unless
+    /// nothing else is left.
     /// </summary>
     public static IReadOnlyList<string> QueryTokens(string query)
     {
@@ -51,7 +58,7 @@ internal static class ToolSearchTokenizer
 
         var all = Runs(query).SelectMany(SplitCase).Select(Normalize).Where(t => t.Length > 1).Distinct(StringComparer.Ordinal).ToList();
         var meaningful = all.Where(t => !StopWords.Contains(t)).ToList();
-        return meaningful.Count > 0 ? meaningful : all;
+        return (meaningful.Count > 0 ? meaningful : all).Take(MaxQueryTokens).ToList();
     }
 
     /// <summary>The text lowercased with everything but letters and digits removed: <c>Loan_CheckOut</c> → <c>loancheckout</c>.</summary>

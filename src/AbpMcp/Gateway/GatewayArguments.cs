@@ -17,13 +17,49 @@ internal static class GatewayArguments
     /// <summary>The non-blank string <paramref name="property"/>, trimmed.</summary>
     public static string RequiredString(JsonElement arguments, string property, string path = "")
     {
-        if (!TryGet(arguments, property, out var value) || value.ValueKind != JsonValueKind.String ||
-            string.IsNullOrWhiteSpace(value.GetString()))
+        var text = TryGet(arguments, property, out var value) ? StringOf(value) : null;
+        if (string.IsNullOrWhiteSpace(text))
         {
             throw Invalid($"'{path}{property}' is required and must be a non-empty string.");
         }
 
-        return value.GetString()!.Trim();
+        return text.Trim();
+    }
+
+    /// <summary>
+    /// <c>query</c> of <c>mcp_search_tools</c>: a non-blank string of at most
+    /// <see cref="GatewayToolDefinitions.MaxSearchQueryLength"/> characters, trimmed. The cap keeps a search, which
+    /// needs no permission, from costing more than a few keywords would.
+    /// </summary>
+    public static string SearchQuery(JsonElement arguments)
+    {
+        var query = RequiredString(arguments, "query");
+        if (query.Length > GatewayToolDefinitions.MaxSearchQueryLength)
+        {
+            throw Invalid($"'query' must be at most {GatewayToolDefinitions.MaxSearchQueryLength} characters.");
+        }
+
+        return query;
+    }
+
+    /// <summary>
+    /// A tool name, exactly as written. It is looked up ordinally, as a direct <c>tools/call</c> looks up its name, so a
+    /// padded name is refused rather than trimmed into a different tool than a client-side filter saw.
+    /// </summary>
+    public static string RequiredName(JsonElement arguments, string property, string path = "")
+    {
+        var name = TryGet(arguments, property, out var value) ? StringOf(value) : null;
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            throw Invalid($"'{path}{property}' is required and must be a non-empty string.");
+        }
+
+        if (name.Any(c => char.IsWhiteSpace(c) || char.IsControl(c)))
+        {
+            throw Invalid($"'{path}{property}' must be a tool name, without spaces or control characters.");
+        }
+
+        return name;
     }
 
     /// <summary><c>limit</c>: absent means the default; any integer is clamped to 1..<see cref="GatewayToolDefinitions.MaxSearchLimit"/>.</summary>
@@ -53,12 +89,13 @@ internal static class GatewayArguments
         var names = new List<string>();
         foreach (var item in value.EnumerateArray())
         {
-            if (item.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(item.GetString()))
+            var name = StringOf(item);
+            if (string.IsNullOrWhiteSpace(name))
             {
                 throw Invalid("Every entry of 'names' must be a non-empty string.");
             }
 
-            names.Add(item.GetString()!.Trim());
+            names.Add(name.Trim());
         }
 
         var distinct = names.Distinct(StringComparer.Ordinal).ToList();
@@ -78,7 +115,7 @@ internal static class GatewayArguments
             throw Invalid($"'{path.TrimEnd('.')}' must be an object with 'name' and 'arguments'.");
         }
 
-        var name = RequiredString(call, "name", path);
+        var name = RequiredName(call, "name", path);
         if (AbpMcpGatewayToolNames.IsGatewayTool(name))
         {
             throw Invalid($"'{name}' is a gateway tool: call it directly, not through {via}.");
@@ -124,7 +161,7 @@ internal static class GatewayArguments
             return true;
         }
 
-        var mode = value.ValueKind == JsonValueKind.String ? value.GetString() : null;
+        var mode = StringOf(value);
         if (string.Equals(mode, "sequential", StringComparison.OrdinalIgnoreCase))
         {
             return true;
@@ -136,6 +173,27 @@ internal static class GatewayArguments
         }
 
         throw Invalid("'mode' must be \"sequential\" or \"parallel\".");
+    }
+
+    /// <summary>
+    /// The string value, or null when the element is not a string or is not valid UTF-16 (a lone surrogate escape makes
+    /// <see cref="JsonElement.GetString"/> throw), so a malformed argument becomes a validation error.
+    /// </summary>
+    private static string? StringOf(JsonElement value)
+    {
+        if (value.ValueKind != JsonValueKind.String)
+        {
+            return null;
+        }
+
+        try
+        {
+            return value.GetString();
+        }
+        catch (InvalidOperationException)
+        {
+            return null;
+        }
     }
 
     /// <summary>The property, unless it is absent or JSON null.</summary>

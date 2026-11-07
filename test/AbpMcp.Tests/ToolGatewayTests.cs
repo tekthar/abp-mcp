@@ -9,6 +9,7 @@ using AbpMcp.Registration;
 using AbpMcp.Settings;
 using FluentAssertions;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
 
 namespace AbpMcp.Tests;
@@ -85,6 +86,32 @@ public class ToolGatewayTests
     }
 
     [Fact]
+    public async Task Search_RefusesAQueryLongerThanTheCap_BeforeScoringAnything()
+    {
+        // A search needs no permission, so its cost must not grow with the request: a long query is refused outright.
+        var query = string.Join(' ', Enumerable.Range(0, 200).Select(i => $"w{i:000}"));
+        query.Length.Should().BeGreaterThan(GatewayToolDefinitions.MaxSearchQueryLength);
+
+        var outcome = await NewGateway(MemberTools()).CallAsync(AbpMcpGatewayToolNames.Search, Json(new { query }), CancellationToken.None);
+
+        outcome.IsError.Should().BeTrue();
+        outcome.Text.Should().StartWith("[VALIDATION_ERROR]").And.Contain("at most 512 characters");
+        GatewayToolDefinitions.Tools[0].InputSchema["properties"]!["query"]!["maxLength"]!.GetValue<int>()
+            .Should().Be(GatewayToolDefinitions.MaxSearchQueryLength, "the cap is advertised in the schema");
+    }
+
+    [Fact]
+    public async Task Search_StopsWhenTheRequestIsCancelled()
+    {
+        using var cancelled = new CancellationTokenSource();
+        await cancelled.CancelAsync();
+
+        var act = () => NewGateway(MemberTools()).CallAsync(AbpMcpGatewayToolNames.Search, Json(new { query = "member" }), cancelled.Token);
+
+        await act.Should().ThrowAsync<OperationCanceledException>();
+    }
+
+    [Fact]
     public async Task Describe_ReturnsProtocolShapedTools_AndReportsUnknownAndForbiddenAlikeAsNotFound()
     {
         var gateway = NewGateway(MemberTools());
@@ -117,6 +144,9 @@ public class ToolGatewayTests
     [InlineData("""{"name":"mcp_search_tools"}""", "is a gateway tool")]
     [InlineData("""{"name":"Member_Get","arguments":"{}"}""", "'arguments' must be a JSON object")]
     [InlineData("""{"arguments":{}}""", "'name' is required")]
+    [InlineData("""{"name":" Member_Get"}""", "without spaces or control characters")]
+    [InlineData("""{"name":"Member_Get\u0085"}""", "without spaces or control characters")]
+    [InlineData("""{"name":"\uD800"}""", "'name' is required")]
     public async Task CallTool_RefusesBadArguments_WithoutCallingAnything(string arguments, string message)
     {
         var outcome = await NewGateway(MemberTools()).CallAsync(AbpMcpGatewayToolNames.Call, Parse(arguments), CancellationToken.None);
@@ -163,6 +193,100 @@ public class ToolGatewayTests
         error["content"]![0]!["type"]!.GetValue<string>().Should().Be("text");
         error["content"]![0]!["text"]!.GetValue<string>().Should().Be("[LIBRARY:BOOM] It failed.");
         results[2]!["content"]![0]!["text"]!.GetValue<string>().Should().Be("42", "a result with no structured content is reported as content");
+    }
+
+    [Theory]
+    [InlineData("sequential")]
+    [InlineData("parallel")]
+    public async Task CallTools_StartsNoCallAfterTheRequestIsCancelled(string mode)
+    {
+        using var request = new CancellationTokenSource();
+        _invoker.OnInvoke = request.Cancel;   // the client cancels while the first call runs
+
+        var act = () => NewGateway(MemberTools()).CallAsync(AbpMcpGatewayToolNames.CallMany,
+            Json(new { calls = new[] { new { name = "Member_Get" }, new { name = "Member_Suspend" }, new { name = "Member_Get" } }, mode }),
+            request.Token);
+
+        await act.Should().ThrowAsync<OperationCanceledException>("a cancelled request is the client's own cancellation");
+        _invoker.Calls.Select(c => c.Name).Should().Equal(["Member_Get"], "a cancelled batch starts no further call");
+    }
+
+    [Fact]
+    public async Task CallTools_KeepsTheResultsOfCallsThatRan_WhenALaterCallThrows()
+    {
+        // A failed kill-switch read or an authorization handler that throws escapes the invoker; the calls before it
+        // already ran and committed, so the batch still reports them.
+        var parallel = await CallAsync(NewGateway(MemberTools()), AbpMcpGatewayToolNames.CallMany, new
+        {
+            calls = new object[] { new { name = "Member_Get" }, new { name = RecordingInvoker.Throws }, new { name = "Member_Suspend" } },
+            mode = "parallel",
+        });
+
+        Statuses(parallel).Should().Equal("ok", "error", "ok");
+        parallel["results"]![1]!["content"]![0]!["text"]!.GetValue<string>()
+            .Should().Be($"[INTERNAL] Tool '{RecordingInvoker.Throws}' failed with an internal error; it may have run.");
+
+        var sequential = await CallAsync(NewGateway(MemberTools()), AbpMcpGatewayToolNames.CallMany, new
+        {
+            calls = new object[] { new { name = "Member_Get" }, new { name = RecordingInvoker.Throws }, new { name = "Member_Suspend" } },
+        });
+
+        Statuses(sequential).Should().Equal("ok", "error", "skipped");
+    }
+
+    [Fact]
+    public async Task CallTools_ReportsAsDeepAResult_AsADirectCallCanReturn()
+    {
+        // The dispatcher serializes up to 64 levels; wrapped in the batch envelope the result sits a few levels deeper.
+        JsonNode deep = 1;
+        for (var level = 0; level < 63; level++)
+        {
+            deep = new JsonObject { ["c"] = deep };
+        }
+
+        var element = JsonSerializer.SerializeToElement(deep, new JsonSerializerOptions { MaxDepth = 64 });
+        _invoker.Outcomes["Member_Get"] = AbpMcpToolCallOutcome.Success(element.GetRawText(), element);
+
+        var outcome = await NewGateway(MemberTools()).CallAsync(AbpMcpGatewayToolNames.CallMany,
+            Json(new { calls = new[] { new { name = "Member_Get" } } }), CancellationToken.None);
+
+        outcome.IsError.Should().BeFalse(outcome.Text);
+        var result = JsonNode.Parse(outcome.Text, documentOptions: new JsonDocumentOptions { MaxDepth = 128 })!;
+        Statuses(result).Should().Equal("ok");
+        outcome.StructuredContent.Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task CallTools_RunsEachCallInADiScopeOfItsOwn()
+    {
+        // State one call leaves in a scoped service (an injected DbContext's change tracker) must not reach the next.
+        var services = new ServiceCollection();
+        services.AddSingleton<IHttpContextAccessor>(new HttpContextAccessor());
+        services.AddScoped<ScopeProbe>();
+        services.AddScoped<IAbpMcpToolInvoker, ProbingInvoker>();
+        services.AddSingleton(new List<ScopeProbe>());
+        await using var root = services.BuildServiceProvider();
+        await using var request = root.CreateAsyncScope();
+        var accessor = root.GetRequiredService<IHttpContextAccessor>();
+        var http = new DefaultHttpContext { RequestServices = request.ServiceProvider };
+        accessor.HttpContext = http;
+
+        var gateway = new AbpMcpToolGateway(
+            new FixedRegistry(MemberTools()),
+            new AbpMcpToolVisibility(AllowAll(), EmptyDisabledTools()),
+            _invoker,
+            accessor,
+            root.GetRequiredService<IServiceScopeFactory>());
+
+        await gateway.CallAsync(AbpMcpGatewayToolNames.CallMany,
+            Json(new { calls = new[] { new { name = "Member_Get" }, new { name = "Member_Get" }, new { name = "Member_Get" } } }), CancellationToken.None);
+        await gateway.CallAsync(AbpMcpGatewayToolNames.Call, Json(new { name = "Member_Get" }), CancellationToken.None);
+
+        var seen = root.GetRequiredService<List<ScopeProbe>>();
+        seen.Should().HaveCount(4).And.OnlyHaveUniqueItems("every call gets a scope of its own")
+            .And.NotContain(request.ServiceProvider.GetRequiredService<ScopeProbe>(), "not the request's scope");
+        http.RequestServices.Should().BeSameAs(request.ServiceProvider, "the request's own scope is restored afterwards");
+        _invoker.Calls.Should().BeEmpty("calls resolve the invoker from their own scope");
     }
 
     [Theory]
@@ -280,8 +404,38 @@ public class ToolGatewayTests
     private static IEnumerable<string> Statuses(JsonNode result) =>
         result["results"]!.AsArray().Select(r => r!["status"]!.GetValue<string>());
 
+    private static IAbpMcpToolAuthorizer AllowAll()
+    {
+        var authorizer = Substitute.For<IAbpMcpToolAuthorizer>();
+        authorizer.AuthorizeAsync(Arg.Any<ToolDescriptor>(), Arg.Any<HttpContext?>()).Returns(AbpMcpToolAuthorizationResult.Success());
+        return authorizer;
+    }
+
+    private static IDisabledToolsProvider EmptyDisabledTools()
+    {
+        var provider = Substitute.For<IDisabledToolsProvider>();
+        provider.GetDisabledToolsAsync(Arg.Any<CancellationToken>()).Returns(_ => new HashSet<string>(StringComparer.Ordinal));
+        return provider;
+    }
+
+    private sealed class ScopeProbe;
+
+    private sealed class ProbingInvoker(IHttpContextAccessor accessor, List<ScopeProbe> seen) : IAbpMcpToolInvoker
+    {
+        public Task<AbpMcpToolCallOutcome> InvokeAsync(string toolName, JsonElement arguments, CancellationToken cancellationToken)
+        {
+            seen.Add(accessor.HttpContext!.RequestServices.GetRequiredService<ScopeProbe>());
+            return Task.FromResult(AbpMcpToolCallOutcome.Success("{}", null));
+        }
+    }
+
     private sealed class RecordingInvoker : IAbpMcpToolInvoker
     {
+        /// <summary>A tool name whose call throws past the invoker, as a failed kill-switch read would.</summary>
+        public const string Throws = "Member_Throws";
+
+        public Action? OnInvoke { get; set; }
+
         public Dictionary<string, AbpMcpToolCallOutcome> Outcomes { get; } = new()
         {
             ["Member_Get"] = AbpMcpToolCallOutcome.Success("""{"id":7}""", JsonDocument.Parse("""{"id":7}""").RootElement.Clone()),
@@ -294,7 +448,10 @@ public class ToolGatewayTests
         public Task<AbpMcpToolCallOutcome> InvokeAsync(string toolName, JsonElement arguments, CancellationToken cancellationToken)
         {
             Calls.Add((toolName, arguments.GetRawText()));
-            return Task.FromResult(Outcomes[toolName]);
+            OnInvoke?.Invoke();
+            return toolName == Throws
+                ? throw new InvalidOperationException("The settings store is unavailable.")
+                : Task.FromResult(Outcomes[toolName]);
         }
     }
 
