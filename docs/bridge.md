@@ -163,15 +163,23 @@ host's `tools/list_changed` refreshes them.
   no network, file, process or module access. The function reaches the host only through `tools.<name>(args)` (or
   `tools.call(name, args)`), `tools.search` and `tools.describe`, and every call takes the `call_tool` path. A call
   resolves to the tool's structured result, or its text parsed as JSON, and throws when the tool reports an error.
-  Limits: 60 seconds for the whole run (an interrupt also stops CPU loops), 50 tool calls, 64 MB of memory, 20,000
-  characters of code. The result is cut to about 24,000 characters, largest values first, and stays valid JSON.
+  Limits: 60 seconds for the whole run (an interrupt also stops CPU loops), 50 tool calls, 50 searches and describes,
+  64 MB of memory, 20,000 characters of code. Strings a script hands the bridge are size-checked inside the sandbox
+  before they are copied out (a search query at most 1,000 characters, a log line at most 2,000). The result is cut to
+  about 24,000 characters, largest values first, and stays valid JSON; a value too deep or too large to shape cheaply
+  is cut as text. Logs and the error get the same budget, and the answer is compact JSON. Deep recursion ends in a
+  catchable stack overflow inside the script. Once a run is cancelled, past its deadline or over, no further call
+  leaves the bridge.
 - **The call journal**: the answer always lists the run's tool calls as `ok`, `error`, `refused` (stopped by the
-  bridge, never sent) or `unknown` (it may have run: the connection broke after it was sent, or the run ended while it
-  was in flight). When a script fails part-way, Claude can see which writes already happened instead of repeating them.
+  bridge, never sent) or `unknown` (it may have run: the connection broke after it was sent, the run ended while it
+  was in flight, or the host failed in a way that can follow a commit, with no error code or `[INTERNAL]`). When a
+  script fails part-way, Claude can see which writes already happened instead of repeating them.
 
 An AbpMcp host can also keep tools out of `tools/list` itself ({I(119)}): its `mcp_search_tools`,
 `mcp_describe_tools` and `mcp_call_tool(s)` are ordinary tools to the bridge, which can pin them or find them by
-search.
+search. A call to the host's `mcp_call_tool` or `mcp_call_tools` is only as visible as every tool it would run: the
+profile's filter decides on each tool name it carries, the whole call is refused when one is hidden (or missing, or
+padded), and the audit log records them as `targets`.
 
 ## How the bridge decides to retry
 

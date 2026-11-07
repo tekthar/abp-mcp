@@ -8,6 +8,36 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [0.6.1] — 2026-11-07
+
+Fixes from a security review of gateway mode and `run_code`.
+
+### Fixed
+
+- **The profile's filter now covers the tools an AbpMcp host's `mcp_call_tool` and `mcp_call_tools` would run.** It
+  decided on the outer name only, so a tool the profile denies (or the read-only preset hides) ran when wrapped in
+  one of them, directly, through `call_tool` or from `run_code`. The bridge now decides on every tool name such a call
+  carries and refuses the whole call when one is hidden, missing or padded. The audit log and the `run_code` journal
+  record the names as `targets`.
+- **`run_code` sends nothing once the run is cancelled, past its deadline or over.** A script that kept going after a
+  failed call (a `try`/`catch` loop) could keep writing to the host after Claude cancelled the run, and the answer that
+  listed those writes was dropped. A `tools/call` whose request was already cancelled is no longer sent at all.
+- **`run_code` can no longer stall or end the bridge.**
+  - Its teardown runs no script code and cannot throw, so many pending lookups can no longer end the process with an
+    unhandled rejection.
+  - Deep recursion ends in a catchable stack overflow inside the script; a host stack overflow that still escapes
+    (deeply nested source) is contained and keeps the journal.
+  - A runtime that cannot be freed takes the shared QuickJS module with it instead of leaking its memory into later
+    runs; repeated overflows no longer disable `run_code` for the rest of the process.
+  - Strings a script hands the bridge are size-checked before they are copied, searches and describes count against a
+    new limit of 50 per run, and the bridge's own search caps its query.
+  - Result shaping has a depth and size ceiling, so a deep return value no longer blocks the bridge long after the
+    deadline.
+- **The `run_code` answer is bounded and complete.** Logs and the error are cut like the result, the answer is compact
+  JSON, and a return value JSON cannot represent becomes `null` instead of losing the journal. A call aborted in
+  flight, and a host error that can follow a commit (no error code, or `[INTERNAL]`), are journaled `unknown`.
+- Concurrent searches with an empty tool cache share one `tools/list` instead of sending one each.
+
 ## [0.6.0] — 2026-11-06
 
 Gateway mode and `run_code` for apps with many tools, and a fix for Linux machines without a desktop keyring.

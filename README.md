@@ -353,10 +353,10 @@ their place:
 
 | Gateway tool | What it returns |
 |---|---|
-| `mcp_search_tools(query, limit?)` | Keyword matches across every tool the caller may use, listed or on demand, best first (default 10, at most 50): `name`, a one-line `description`, `http_method`, `read_only` and `listing`. No schemas. |
+| `mcp_search_tools(query, limit?)` | Keyword matches across every tool the caller may use, listed or on demand, best first (default 10, at most 50): `name`, a one-line `description`, `http_method`, `read_only` and `listing`. No schemas. The query is a few keywords: at most 512 characters, and only its first 32 distinct words are scored. |
 | `mcp_describe_tools(names)` | For up to 20 names: the description, `inputSchema` and `outputSchema`, shaped as `tools/list` advertises them. A name the caller may not use is reported in `not_found`, like an unknown one. |
 | `mcp_call_tool(name, arguments)` | The tool's own result, exactly as a direct `tools/call` returns it. |
-| `mcp_call_tools(calls, mode)` | Up to 20 calls in one request. `sequential` (the default) stops at the first error and reports the rest as `skipped`; `parallel` runs every call. Each result has `name`, `status` (`ok`, `error`, `skipped`), `isError`, and the tool's `structuredContent`, or its `content` when it has none. |
+| `mcp_call_tools(calls, mode)` | Up to 20 calls in one request. `sequential` (the default) stops at the first error and reports the rest as `skipped`; `parallel` runs every call. Each result has `name`, `status` (`ok`, `error`, `skipped`), `isError`, and the tool's `structuredContent`, or its `content` when it has none. A cancelled request starts no further call. |
 
 Tag a service or a method, or decide from the host without touching the service:
 
@@ -378,10 +378,13 @@ tools too. The listing is decided when the tool set is built, at startup and on 
 An on-demand tool keeps every guarantee a listed one has. Search and describe use the same permission and kill-switch
 filter as `tools/list`, so a tool the caller cannot use is never found or described. Every call goes through the same
 dispatcher as a direct `tools/call`, with the same permission check, validation, unit of work, audit entry and error
-codes, and a direct `tools/call` by name still works. The gateway tools are listed only while at least one tool is on
-demand; their names are reserved, and the kill switch turns them off like any tool. `parallel` means the calls are
-independent: each one runs whatever the others return. They still run one at a time inside the request, because a
-request's scoped services, such as an injected `DbContext` or ABP's audit log, are not safe for concurrent use.
+codes, and a direct `tools/call` by name still works. Each gateway call also runs in a DI scope of its own, as a
+separate request would, so state a failed call leaves in a scoped service (an injected `DbContext`'s change tracker)
+is never saved by the next call. Tool names inside gateway calls must be exact: a padded name is refused, not trimmed.
+The gateway tools are listed only while at least one tool is on demand; their names are reserved, and the kill switch
+turns them off like any tool. `parallel` means the calls are independent: each one runs whatever the others return.
+They still run one at a time inside the request. A call that fails outside the error mapping (a failed kill-switch
+read, an authorization handler that throws) is reported as `INTERNAL`, and the calls before it keep their results.
 
 `/mcp/_discover` shows each tool's `listing` and an approximate `schema_tokens` cost (characters / 4 of its description
 and schemas), plus the totals for listed, gateway and on-demand tools. `/mcp/_explain` says whether the attribute or
@@ -463,7 +466,7 @@ The API reference ships as XML documentation, so your editor shows it as you typ
 
 ## Status and roadmap
 
-This is **0.6.0**. It runs in production, but the API may still change before 1.0: minor versions may include breaking
+This is **0.6.1**. It runs in production, but the API may still change before 1.0: minor versions may include breaking
 changes, and the [changelog](https://github.com/tekthar/abp-mcp/blob/main/CHANGELOG.md) describes them. Coming next:
 
 - choosing tools with type and method predicates ([#11](https://github.com/tekthar/abp-mcp/issues/11)) and
