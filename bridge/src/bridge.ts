@@ -15,7 +15,7 @@ import {
 import { toolErrorCode, type AuditLog, type AuditOutcome } from "./audit.js";
 import { BreakerOpenError, NotSignedInError, OAuthError } from "./auth/errors.js";
 import type { TokenManager } from "./auth/token-manager.js";
-import { ToolFilter, type FilterDecision } from "./filter.js";
+import { hostCallTargets, isExactToolName, ToolFilter, type FilterDecision } from "./filter.js";
 import { describeError, type Logger } from "./log.js";
 import type { Profile } from "./profiles.js";
 import { MayHaveRunError, NotSentError, withListToolsHint } from "./upstream/errors.js";
@@ -155,9 +155,16 @@ export class Bridge {
 
   async callTool(name: string, args: Record<string, unknown> | undefined, signal?: AbortSignal): Promise<CallToolResult> {
     const started = Date.now();
+    const targets = hostCallTargets(name, args);
     const record = (outcome: AuditOutcome, errorCode?: string): void => {
       try {
-        this.options.audit?.record({ tool: name, outcome, durationMs: Date.now() - started, ...(errorCode ? { errorCode } : {}) });
+        this.options.audit?.record({
+          tool: name,
+          ...(targets ? { targets: targets.map((target) => (typeof target === "string" ? target : String(target))) } : {}),
+          outcome,
+          durationMs: Date.now() - started,
+          ...(errorCode ? { errorCode } : {}),
+        });
       } catch (error) {
         // AuditLog.record does not throw; this guards the call's outcome against any audit sink that does.
         this.options.log.debug("Could not record the tool call in the audit log", error);
@@ -165,8 +172,21 @@ export class Bridge {
     };
 
     let decision: FilterDecision;
+    let refused = `Tool '${name}'`;
     try {
       decision = await this.decideForCall(name);
+      // A host tool that runs other tools by name (AbpMcp's mcp_call_tool(s)) is only as visible as every tool it
+      // would run: otherwise a hidden tool is one wrapper away.
+      for (const target of decision.visible ? targets ?? [] : []) {
+        const targetDecision: FilterDecision = isExactToolName(target)
+          ? await this.decideForCall(target)
+          : { visible: false, reason: "a tool name it carries is missing, or contains spaces or control characters" };
+        if (!targetDecision.visible) {
+          decision = targetDecision;
+          refused = `Tool ${JSON.stringify(target)}, called through '${name}',`;
+          break;
+        }
+      }
     } catch (error) {
       record("failed", "BRIDGE_SIGN_IN_REQUIRED");
       return bridgeError(errorCode(error), userMessage(error, this.options.profile));
@@ -175,7 +195,7 @@ export class Bridge {
     if (!decision.visible) {
       record("refused", "BRIDGE_TOOL_HIDDEN");
       return bridgeError("BRIDGE_TOOL_HIDDEN",
-        `Tool '${name}' is not available through profile '${this.options.profile.name}': ${decision.reason}. ` +
+        `${refused} is not available through profile '${this.options.profile.name}': ${decision.reason}. ` +
         "It was not sent to the host.");
     }
 

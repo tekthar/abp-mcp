@@ -7,6 +7,8 @@ export type AuditOutcome = "ok" | "tool_error" | "refused" | "failed" | "cancell
 
 export interface AuditEntry {
   readonly tool: string;
+  /** For a host tool that runs other tools by name (`mcp_call_tool`, `mcp_call_tools`): the tools it was asked to run. */
+  readonly targets?: readonly string[];
   readonly outcome: AuditOutcome;
   readonly durationMs: number;
   readonly errorCode?: string;
