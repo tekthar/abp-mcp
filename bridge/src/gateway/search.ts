@@ -12,6 +12,12 @@ export interface ToolMatch {
 
 export const DEFAULT_SEARCH_LIMIT = 10;
 export const MAX_SEARCH_LIMIT = 50;
+
+/** The longest search query scored; the rest is ignored. */
+export const MAX_QUERY_CHARS = 500;
+
+/** The most distinct query words scored. */
+export const MAX_QUERY_WORDS = 32;
 const SUMMARY_CHARS = 160;
 
 interface Field {
@@ -42,8 +48,10 @@ export class ToolSearchIndex {
   }
 
   search(query: string, limit = DEFAULT_SEARCH_LIMIT): ToolMatch[] {
-    const phrase = normalize(query);
-    const words = tokenize(query);
+    // Scoring costs words × tools, on the bridge's only thread: a search is a few keywords, never a document.
+    const bounded = query.slice(0, MAX_QUERY_CHARS);
+    const phrase = normalize(bounded);
+    const words = [...new Set(tokenize(bounded))].slice(0, MAX_QUERY_WORDS);
     if (words.length === 0) {
       return [];
     }
@@ -57,7 +65,7 @@ export class ToolSearchIndex {
     }
 
     scored.sort((a, b) => b.score - a.score || a.entry.tool.name.localeCompare(b.entry.tool.name));
-    const capped = Math.min(Math.max(1, Math.floor(limit)), MAX_SEARCH_LIMIT);
+    const capped = Number.isFinite(limit) ? Math.min(Math.max(1, Math.floor(limit)), MAX_SEARCH_LIMIT) : DEFAULT_SEARCH_LIMIT;
     return scored.slice(0, capped).map(({ entry }) => this.match(entry.tool));
   }
 

@@ -266,6 +266,12 @@ export class Upstream {
   }
 
   private async callOnce(client: Client, params: CallToolRequest["params"], signal?: AbortSignal): Promise<CallToolResult> {
+    if (signal?.aborted) {
+      // Cancelled before it was sent. An abort listener added now would never fire, so the request would go out
+      // regardless: refuse it here, where nothing has reached the host.
+      throw new NotSentError(this.host, signal.reason, `The call to '${params.name}' was cancelled before it was sent; it did not run.`);
+    }
+
     const controller = new AbortController();
     let transportFailure: unknown;
     const scope: CallScope = {

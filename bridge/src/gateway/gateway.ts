@@ -188,7 +188,8 @@ function runCodeDefinition(host: string): Tool {
       "  console.log(...)               returned in \"logs\"",
       "Example: async () => { const found = await tools.search(\"list projects\"); return found.results.map((t) => t.name); }",
       "There is no network, file or Node access, only tools. The result lists every tool call the code made (\"calls\"), " +
-      "each ok, error or unknown (it may have run): do not repeat a call marked ok or unknown.",
+      "each ok, error, refused (never sent) or unknown (it may have run): do not repeat a call marked ok or unknown.",
+      "Limits per run: 60 s, 50 tool calls, 50 searches and describes; the result, logs and error are cut to about 24,000 characters.",
     ].join("\n"),
     inputSchema: {
       type: "object",

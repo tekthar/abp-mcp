@@ -17,8 +17,8 @@ export class MayHaveRunError extends Error {
 export class NotSentError extends Error {
   override readonly name = "NotSentError";
 
-  constructor(host: string, cause: unknown) {
-    super(`Could not reach ${host}; nothing was sent, so the call did not run.`, { cause });
+  constructor(host: string, cause: unknown, message = `Could not reach ${host}; nothing was sent, so the call did not run.`) {
+    super(message, { cause });
   }
 }
 

@@ -58,6 +58,8 @@ export class Bridge {
   private httpMethods: HttpMethods | undefined;
   /** The upstream tools the profile allows, from the last `tools/list`; the gateway searches these. */
   private allowedTools: Tool[] | undefined;
+  /** The `tools/list` in flight to refill the cache, shared by every caller that finds it empty. */
+  private fetchingTools: Promise<Tool[]> | undefined;
   private readonly gateway: Gateway | undefined;
   private signIn: Promise<void> | undefined;
   private initialized = false;
@@ -133,7 +135,12 @@ export class Bridge {
       throw new NotSignedInError(`Profile '${this.options.profile.name}' is not signed in yet; finish the sign-in in the browser.`);
     }
 
-    return this.fetchAllowedTools();
+    // One fetch for everyone who finds the cache empty: run_code can start many searches at once, and each must not
+    // send its own tools/list (and _discover) to the host.
+    this.fetchingTools ??= this.fetchAllowedTools().finally(() => {
+      this.fetchingTools = undefined;
+    });
+    return this.fetchingTools;
   }
 
   /** The host's tools, less what the profile's filter hides. */
