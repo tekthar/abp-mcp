@@ -6,6 +6,35 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [0.6.1] — 2026-11-10
+
+Fixes from a security review of the 0.6.0 gateway tools, and MCP SDK 2.4.0. No API changes.
+
+### Fixed
+
+- **`mcp_search_tools` does bounded work.** The tool needs no permission, but its query had no length limit and every
+  distinct word was scored against every registered tool, so one large query could hold the host's CPU for seconds and
+  kept running after the client cancelled. The query is now at most 512 characters (advertised as `maxLength`; longer
+  is a `VALIDATION_ERROR`), at most 32 distinct words are scored, and the search stops when the request is cancelled.
+- **Each `mcp_call_tool` and `mcp_call_tools` call runs in a DI scope of its own**, as a separate `tools/call` request
+  would. Before, every call of a batch shared the request's scope, so a call that changed a request-scoped `DbContext`
+  and then refused (an ownership check after loading the entity, for example) had its change saved by the next call of
+  a `parallel` batch. Hosts that write only through ABP repositories were not affected.
+- `mcp_call_tools` starts no further call once its request is cancelled; a call that fails outside the error mapping
+  (a failed kill-switch read, an authorization handler that throws) is reported as `INTERNAL` without discarding the
+  results of the calls that already ran; and a result as deep as a direct call can return no longer makes the batch
+  envelope fail after every call ran.
+- Tool names inside `mcp_call_tool` and `mcp_call_tools` must be exact: a padded name is refused instead of trimmed into
+  a tool a client-side filter never saw. Invalid UTF-16 in a gateway argument is a `VALIDATION_ERROR`.
+
+### Changed
+
+- **MCP SDK `ModelContextProtocol.AspNetCore` 2.3.1 → 2.4.0** ([#126](https://github.com/tekthar/abp-mcp/pull/126)).
+  On the server it fixes notifications and cancellation being dropped when a request is cancelled, and it ends open
+  `subscriptions/listen` requests when the transport stops delivering messages. The rest of the release (an experimental
+  Skills package, OAuth fixes in the SDK's client, MCP Apps property matching) does not touch the paths abp-mcp uses.
+  AbpMcp now depends on 2.4.0 or later.
+
 ## [0.6.0] — 2026-11-06
 
 On-demand tools and gateway tools for large tool sets: a host can keep most of its tools out of `tools/list` and let
@@ -233,7 +262,8 @@ First public pre-release. Functional but pre-alpha — API surface will move bas
 - No Roslyn analyzer yet to flag `[McpTool]` on non-`IApplicationService` types at compile time. Targeted for v0.3.
 - `services.AddAbpMcpAssembly(asm)` already removes the two-step registration friction for the common case. Letting `AbpMcpOptions.ExposedAssemblies.Create(asm)` *itself* auto-register with `ConventionalControllers` (so the lambda-style `Configure<AbpMcpOptions>(...)` form needs no companion call either) is queued for v0.2.
 
-[Unreleased]: https://github.com/tekthar/abp-mcp/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/tekthar/abp-mcp/compare/v0.6.1...HEAD
+[0.6.1]: https://github.com/tekthar/abp-mcp/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/tekthar/abp-mcp/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/tekthar/abp-mcp/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/tekthar/abp-mcp/compare/v0.4.0...v0.4.1

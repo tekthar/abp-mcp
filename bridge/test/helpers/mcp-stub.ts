@@ -26,6 +26,11 @@ export interface McpStubOptions {
   readonly resourceMetadata?: "challenge" | "well-known" | "none";
   /** Serve `/mcp/_explain` reporting these tools with undefined permissions. */
   readonly undefinedPermissions?: readonly { tool: string; permission: string }[];
+  /**
+   * Also serve AbpMcp's call-by-name gateway tools, `mcp_call_tool` and `mcp_call_tools`, which run the tools named in
+   * their arguments; `_discover` reports them under `gateway_tools`, not `tools`, as AbpMcp does.
+   */
+  readonly gatewayTools?: boolean;
 }
 
 const HTTP_METHODS: Record<string, string | null> = {
@@ -146,7 +151,10 @@ export class McpStub {
         return;
       }
 
-      return json(response, 200, { tools: Object.entries(HTTP_METHODS).map(([name, method]) => ({ name, http_method: method })) });
+      return json(response, 200, {
+        tools: Object.entries(HTTP_METHODS).map(([name, method]) => ({ name, http_method: method })),
+        ...(this.options.gatewayTools ? { gateway_tools: ["mcp_search_tools", "mcp_describe_tools", "mcp_call_tool", "mcp_call_tools"] } : {}),
+      });
     }
 
     if (url.pathname === "/mcp/_explain" && this.options.undefinedPermissions) {
@@ -249,7 +257,38 @@ export class McpStub {
       this.registerExtraTools(mcp);
     }
 
+    if (this.options.gatewayTools) {
+      this.registerGatewayTools(mcp);
+    }
+
     return mcp;
+  }
+
+  /** AbpMcp's call-by-name tools: each runs the stub tools named in its arguments, looked up exactly as written. */
+  private registerGatewayTools(mcp: McpServer): void {
+    const runByName = (name: string): string => {
+      if (!(name in HTTP_METHODS)) {
+        return `[UNKNOWN_TOOL] No tool named '${name}' is registered.`;
+      }
+
+      this.count(name);
+      return `ran ${name}`;
+    };
+
+    mcp.registerTool("mcp_call_tool", {
+      description: "Call one tool by name, including on-demand tools.",
+      inputSchema: { name: z.string(), arguments: z.record(z.string(), z.unknown()).optional() },
+    }, async (args) => {
+      this.count("mcp_call_tool");
+      return { content: [{ type: "text" as const, text: runByName(args.name) }] };
+    });
+    mcp.registerTool("mcp_call_tools", {
+      description: "Call several tools in one request.",
+      inputSchema: { calls: z.array(z.object({ name: z.string(), arguments: z.record(z.string(), z.unknown()).optional() })) },
+    }, async (args) => {
+      this.count("mcp_call_tools");
+      return { content: [{ type: "text" as const, text: JSON.stringify({ results: args.calls.map((call) => runByName(call.name)) }) }] };
+    });
   }
 
   private registerExtraTools(mcp: McpServer): void {

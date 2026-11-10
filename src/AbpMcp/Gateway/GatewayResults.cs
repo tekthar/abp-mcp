@@ -17,12 +17,24 @@ internal static class GatewayResults
     /// <summary>Longest one-line description <c>mcp_search_tools</c> returns.</summary>
     public const int OneLineMaxLength = 160;
 
+    // A batch nests each tool's result a few levels below the envelope, so a result the dispatcher could serialize
+    // (up to its 64-level limit) must still fit once wrapped: the envelope is never the step that fails.
+    private const int EnvelopeMaxDepth = 128;
+
     // The text block is read by a model, not embedded in HTML, so apostrophes and non-ASCII stay readable.
-    private static readonly JsonSerializerOptions TextOptions = new() { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
+    private static readonly JsonSerializerOptions TextOptions = new()
+    {
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+        MaxDepth = EnvelopeMaxDepth,
+    };
+
+    private static readonly JsonSerializerOptions ElementOptions = new() { MaxDepth = EnvelopeMaxDepth };
+
+    private static readonly JsonDocumentOptions ParseOptions = new() { MaxDepth = EnvelopeMaxDepth };
 
     /// <summary>A gateway tool's own successful result: the payload as JSON text and as <c>structuredContent</c>.</summary>
     public static AbpMcpToolCallOutcome Success(JsonObject payload) =>
-        AbpMcpToolCallOutcome.Success(payload.ToJsonString(TextOptions), JsonSerializer.SerializeToElement(payload));
+        AbpMcpToolCallOutcome.Success(payload.ToJsonString(TextOptions), JsonSerializer.SerializeToElement(payload, ElementOptions));
 
     /// <summary>One <c>mcp_search_tools</c> result: no schemas, one line of description.</summary>
     public static JsonObject SearchItem(ToolDescriptor tool) => new()
@@ -74,7 +86,7 @@ internal static class GatewayResults
         item["isError"] = outcome.IsError;
         if (outcome.StructuredContent is { } structured)
         {
-            item["structuredContent"] = JsonNode.Parse(structured.GetRawText());
+            item["structuredContent"] = JsonNode.Parse(structured.GetRawText(), documentOptions: ParseOptions);
         }
         else
         {

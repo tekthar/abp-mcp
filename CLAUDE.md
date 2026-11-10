@@ -4,7 +4,7 @@ Project-specific guidance for Claude Code (and any agent) working on `abp-mcp`.
 
 ## Project summary
 
-`abp-mcp` is an open-source NuGet package that turns any ABP Framework application into a Model Context Protocol server. It reads ABP's `/api/abp/api-definition` metadata, filters by `[McpTool]`-tagged services, and exposes them as MCP tools with permission-aware visibility and ABP-native error mapping. Targets `net10.0` with ABP `10.1.*` as the floor — versions live in `Directory.Build.props` as `$(AbpVersion)`/`$(EfCoreVersion)`/`$(MsExtVersion)`. Current MCP SDK: `ModelContextProtocol.AspNetCore` 2.3, with the transport stateful by default in `AddAbpMcp` (2.x defaults to stateless, which cannot deliver `tools/list_changed`). `AbpMcpOptions.Stateless` opts into stateless for load-balanced hosts without session affinity, and a host's own `Configure<HttpServerTransportOptions>` still wins.
+`abp-mcp` is an open-source NuGet package that turns any ABP Framework application into a Model Context Protocol server. It reads ABP's `/api/abp/api-definition` metadata, filters by `[McpTool]`-tagged services, and exposes them as MCP tools with permission-aware visibility and ABP-native error mapping. Targets `net10.0` with ABP `10.1.*` as the floor — versions live in `Directory.Build.props` as `$(AbpVersion)`/`$(EfCoreVersion)`/`$(MsExtVersion)`. Current MCP SDK: `ModelContextProtocol.AspNetCore` 2.4, with the transport stateful by default in `AddAbpMcp` (2.x defaults to stateless, which cannot deliver `tools/list_changed`). `AbpMcpOptions.Stateless` opts into stateless for load-balanced hosts without session affinity, and a host's own `Configure<HttpServerTransportOptions>` still wins.
 
 ## Architecture at a glance
 

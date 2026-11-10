@@ -4,12 +4,16 @@ using AbpMcp.Dispatch;
 using AbpMcp.Metadata;
 using AbpMcp.Registration;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace AbpMcp.Gateway;
 
 /// <summary>
-/// Default <see cref="IAbpMcpToolGateway"/>. Catches only the <see cref="AbpMcpToolException"/> its argument checks
-/// raise; the tools it calls report their own errors through <see cref="IAbpMcpToolInvoker"/>.
+/// Default <see cref="IAbpMcpToolGateway"/>. Catches the <see cref="AbpMcpToolException"/> its argument checks raise;
+/// the tools it calls report their own errors through <see cref="IAbpMcpToolInvoker"/>. Each call it makes runs in a
+/// DI scope of its own, as a separate <c>tools/call</c> request would.
 /// </summary>
 internal sealed class AbpMcpToolGateway : IAbpMcpToolGateway
 {
@@ -17,17 +21,23 @@ internal sealed class AbpMcpToolGateway : IAbpMcpToolGateway
     private readonly IAbpMcpToolVisibility _visibility;
     private readonly IAbpMcpToolInvoker _invoker;
     private readonly IHttpContextAccessor _httpContextAccessor;
+    private readonly IServiceScopeFactory? _scopeFactory;
+    private readonly ILogger<AbpMcpToolGateway> _logger;
 
     public AbpMcpToolGateway(
         IDynamicMcpToolRegistry registry,
         IAbpMcpToolVisibility visibility,
         IAbpMcpToolInvoker invoker,
-        IHttpContextAccessor httpContextAccessor)
+        IHttpContextAccessor httpContextAccessor,
+        IServiceScopeFactory? scopeFactory = null,
+        ILogger<AbpMcpToolGateway>? logger = null)
     {
         _registry = registry;
         _visibility = visibility;
         _invoker = invoker;
         _httpContextAccessor = httpContextAccessor;
+        _scopeFactory = scopeFactory;
+        _logger = logger ?? NullLogger<AbpMcpToolGateway>.Instance;
     }
 
     private HttpContext? Http => _httpContextAccessor.HttpContext;
@@ -73,10 +83,10 @@ internal sealed class AbpMcpToolGateway : IAbpMcpToolGateway
     /// <summary>Rank every registered tool, keep those the caller may see (in rank order), return the first <c>limit</c>.</summary>
     private async Task<AbpMcpToolCallOutcome> SearchAsync(JsonElement arguments, CancellationToken cancellationToken)
     {
-        var query = GatewayArguments.RequiredString(arguments, "query");
+        var query = GatewayArguments.SearchQuery(arguments);
         var limit = GatewayArguments.Limit(arguments);
 
-        var ranked = ToolSearchIndex.For(_registry.Tools).Search(query);
+        var ranked = ToolSearchIndex.For(_registry.Tools).Search(query, cancellationToken);
         var visible = await _visibility.FilterAsync(ranked.Select(m => m.Tool), Http, cancellationToken).ConfigureAwait(false);
 
         var payload = new JsonObject
@@ -118,14 +128,16 @@ internal sealed class AbpMcpToolGateway : IAbpMcpToolGateway
     private Task<AbpMcpToolCallOutcome> CallOneAsync(JsonElement arguments, CancellationToken cancellationToken)
     {
         var call = GatewayArguments.Call(arguments, path: string.Empty, via: AbpMcpGatewayToolNames.Call);
-        return _invoker.InvokeAsync(call.Name, call.Arguments, cancellationToken);
+        return InvokeInOwnScopeAsync(call, cancellationToken);
     }
 
     /// <summary>
-    /// Every call goes through the invoker on its own, so each gets its own permission check, unit of work and audit
-    /// entry. Both modes run the calls one at a time, in order: a request's scoped services (an injected DbContext, the
-    /// ambient audit log) are not safe for concurrent use. <c>parallel</c> means the calls are independent: each runs
-    /// whatever the others return.
+    /// Every call goes through the invoker on its own, in a DI scope of its own, so each gets its own permission check,
+    /// unit of work, audit entry and scoped services: state one call leaves behind (an injected DbContext's change
+    /// tracker) cannot be saved by the next. Both modes run the calls one at a time, in order. <c>parallel</c> means the
+    /// calls are independent: each runs whatever the others return. A cancelled request starts no further call, and a
+    /// call that fails outside the error mapping is reported as <c>INTERNAL</c> rather than discarding the results of
+    /// the calls that already ran.
     /// </summary>
     private async Task<AbpMcpToolCallOutcome> CallManyAsync(JsonElement arguments, CancellationToken cancellationToken)
     {
@@ -136,6 +148,9 @@ internal sealed class AbpMcpToolGateway : IAbpMcpToolGateway
         int succeeded = 0, failed = 0, skipped = 0;
         foreach (var call in calls)
         {
+            // A direct tools/call starts nothing once its request is cancelled; a batch must not either.
+            cancellationToken.ThrowIfCancellationRequested();
+
             if (sequential && failed > 0)
             {
                 skipped++;
@@ -143,7 +158,7 @@ internal sealed class AbpMcpToolGateway : IAbpMcpToolGateway
                 continue;
             }
 
-            var outcome = await _invoker.InvokeAsync(call.Name, call.Arguments, cancellationToken).ConfigureAwait(false);
+            var outcome = await InvokeReportingFailureAsync(call, cancellationToken).ConfigureAwait(false);
             if (outcome.IsError)
             {
                 failed++;
@@ -164,5 +179,50 @@ internal sealed class AbpMcpToolGateway : IAbpMcpToolGateway
             ["skipped"] = skipped,
             ["results"] = results,
         });
+    }
+
+    /// <summary>
+    /// One batch call. An exception the invoker lets through (a failed kill-switch read, an authorization handler that
+    /// throws) becomes an <c>INTERNAL</c> item that says the call may have run, so the calls before it keep their
+    /// results; cancellation still ends the request.
+    /// </summary>
+    private async Task<AbpMcpToolCallOutcome> InvokeReportingFailureAsync(GatewayArguments.ToolCall call, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await InvokeInOwnScopeAsync(call, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+        {
+            _logger.LogError(ex, "Batch call {Tool} failed outside the error mapping table", call.Name);
+            return AbpMcpToolCallOutcome.Error(AbpMcpErrorCodes.Internal, $"Tool '{call.Name}' failed with an internal error; it may have run.");
+        }
+    }
+
+    /// <summary>
+    /// One call in a fresh DI scope, as a separate <c>tools/call</c> request would have, with
+    /// <see cref="HttpContext.RequestServices"/> pointing at it for the duration of the call. Without a request scope
+    /// (tests that drive the gateway directly) the gateway's own invoker is used.
+    /// </summary>
+    private async Task<AbpMcpToolCallOutcome> InvokeInOwnScopeAsync(GatewayArguments.ToolCall call, CancellationToken cancellationToken)
+    {
+        var http = Http;
+        if (_scopeFactory is null || http?.RequestServices is null)
+        {
+            return await _invoker.InvokeAsync(call.Name, call.Arguments, cancellationToken).ConfigureAwait(false);
+        }
+
+        var requestServices = http.RequestServices;
+        await using var scope = _scopeFactory.CreateAsyncScope();
+        http.RequestServices = scope.ServiceProvider;
+        try
+        {
+            return await scope.ServiceProvider.GetRequiredService<IAbpMcpToolInvoker>()
+                .InvokeAsync(call.Name, call.Arguments, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            http.RequestServices = requestServices;
+        }
     }
 }

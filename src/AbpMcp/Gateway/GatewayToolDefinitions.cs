@@ -17,6 +17,9 @@ internal static class GatewayToolDefinitions
     /// <summary>Most <c>mcp_search_tools</c> results; a larger <c>limit</c> is clamped to it.</summary>
     public const int MaxSearchLimit = 50;
 
+    /// <summary>Longest <c>query</c> <c>mcp_search_tools</c> accepts: a few keywords, never a document.</summary>
+    public const int MaxSearchQueryLength = 512;
+
     /// <summary>Most names one <c>mcp_describe_tools</c> accepts.</summary>
     public const int MaxDescribeNames = 20;
 
@@ -37,7 +40,12 @@ internal static class GatewayToolDefinitions
             $"Then read schemas with {AbpMcpGatewayToolNames.Describe} and call with {AbpMcpGatewayToolNames.Call} or {AbpMcpGatewayToolNames.CallMany}.",
             new JsonObject
             {
-                ["query"] = Described("string", "Keywords, such as \"overdue loans\" or \"suspend member\". Matched against tool names, services and descriptions."),
+                ["query"] = new JsonObject
+                {
+                    ["type"] = "string",
+                    ["maxLength"] = MaxSearchQueryLength,
+                    ["description"] = "Keywords, such as \"overdue loans\" or \"suspend member\". Matched against tool names, services and descriptions.",
+                },
                 ["limit"] = new JsonObject
                 {
                     ["type"] = "integer",

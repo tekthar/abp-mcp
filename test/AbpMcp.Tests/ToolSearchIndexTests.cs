@@ -148,6 +148,15 @@ public class ToolSearchTokenizerTests
     public void Stem_RemovesPlurals(string word, string stem) => ToolSearchTokenizer.Stem(word).Should().Be(stem);
 
     [Fact]
+    public void QueryTokens_AreCapped_SoAHugeQueryCostsNoMoreThanAShortOne()
+    {
+        // 10,000 distinct five-letter words (digits mapped to a..j, so no digit splits or plural stems).
+        var words = Enumerable.Range(0, 10_000).Select(i => string.Concat(i.ToString("D5").Select(c => (char)('a' + c - '0'))));
+
+        ToolSearchTokenizer.QueryTokens(string.Join(' ', words)).Should().HaveCount(ToolSearchTokenizer.MaxQueryTokens);
+    }
+
+    [Fact]
     public void QueryTokens_DropStopWords_UnlessNothingElseIsLeft()
     {
         ToolSearchTokenizer.QueryTokens("to be or not").Should().Equal("not");

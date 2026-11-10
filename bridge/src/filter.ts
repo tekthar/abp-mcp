@@ -70,6 +70,37 @@ export class ToolFilter {
   }
 }
 
+/**
+ * The host tools that run other tools named in their arguments: AbpMcp's gateway (`mcp_call_tool`, `mcp_call_tools`).
+ * Each maps a call's arguments to the names it would run; an entry that is not a string stays as it is, so the
+ * caller can refuse it.
+ */
+const HOST_CALL_BY_NAME = new Map<string, (args: Record<string, unknown> | undefined) => unknown[]>([
+  ["mcp_call_tool", (args) => [args?.name]],
+  ["mcp_call_tools", (args) => {
+    const calls = args?.calls;
+    return Array.isArray(calls) && calls.length > 0
+      ? calls.map((call: unknown) => (call !== null && typeof call === "object" ? (call as { name?: unknown }).name : undefined))
+      : [undefined];
+  }],
+]);
+
+/**
+ * The tools a call of a host call-by-name tool would run, or `undefined` for any other tool. The filter must decide
+ * on these too: a tool the profile hides must not be one wrapper away.
+ */
+export function hostCallTargets(name: string, args: Record<string, unknown> | undefined): unknown[] | undefined {
+  return HOST_CALL_BY_NAME.get(name)?.(args);
+}
+
+/**
+ * True for a tool name the host runs exactly as written: a non-empty string with no whitespace, control or format
+ * character that a host could trim (or a filter could miss) on its way to a different tool.
+ */
+export function isExactToolName(name: unknown): name is string {
+  return typeof name === "string" && /^[^\p{Cc}\p{Cf}\p{Z}\s]+$/u.test(name);
+}
+
 /** A case-insensitive, anchored pattern for a glob where `*` matches any run of characters and `?` one. */
 export function globToRegExp(glob: string): RegExp {
   let source = "";

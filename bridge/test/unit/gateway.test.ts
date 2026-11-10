@@ -67,6 +67,36 @@ describe("result truncation", () => {
   });
 });
 
+describe("bounded work (0.6.1)", () => {
+  it("cuts a value too deep to shape as text that fits the budget, without throwing", () => {
+    let chain: unknown = "x".repeat(65_536);
+    for (let level = 0; level < 2_500; level++) {
+      chain = { kkkkkkkkkkkkkkkkkkkkkkkkkkkkkk: chain };
+    }
+
+    const started = Date.now();
+    const cut = truncateJson(chain, 24_000);
+    assert.ok(Date.now() - started < 1_000, "linear in the value, not in depth x size");
+    assert.equal(typeof cut, "string");
+    assert.ok(JSON.stringify(cut).length <= 24_000, `${JSON.stringify(cut).length}`);
+    assert.ok((cut as string).endsWith(TRUNCATED));
+  });
+
+  it("the text fallback fits the budget once encoded, even when the JSON escapes many characters", () => {
+    const quotes = Array.from({ length: 50 }, () => '"'.repeat(1_000));
+    const cut = truncateJson(Object.fromEntries(Array.from({ length: 40 }, (_, index) => [`k${index}`, { deep: { deeper: { deepest: quotes } } }])), 4_000);
+    assert.ok(JSON.stringify(cut).length <= 4_000, `${JSON.stringify(cut).length}`);
+  });
+
+  it("scores at most a few dozen distinct words of a huge query", () => {
+    const many = new ToolSearchIndex(Array.from({ length: 200 }, (_, index) => tool(`Widget_Op${index}`, "Operate on a widget.")));
+    const started = Date.now();
+    many.search("zq ".repeat(3_000_000));
+    assert.ok(Date.now() - started < 500, `${Date.now() - started} ms`);
+    assert.equal(many.search("widget", Number.NaN).length, 10, "a limit that is not a number means the default");
+  });
+});
+
 describe("gateway profile settings", () => {
   it("reads tools.gateway as true or an object", () => {
     assert.deepEqual(parseProfile("a", { url: "https://h/mcp", tools: { gateway: true } }).tools.gateway, { pinned: [], code: true });

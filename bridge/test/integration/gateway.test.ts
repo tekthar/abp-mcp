@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import assert from "node:assert/strict";
 import { after, afterEach, before, describe, it } from "node:test";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
@@ -119,3 +120,87 @@ describe("gateway mode (#120)", () => {
     assert.equal(found.results[0]?.name, "Issue_Get", "search reads the list again");
   });
 });
+
+describe("the host's call-by-name gateway tools through the bridge's filter (0.6.1)", () => {
+  let host: McpStub;
+  const harnesses: Harness[] = [];
+
+  before(async () => {
+    host = await new McpStub({ discover: true, extraTools: true, gatewayTools: true }).start();
+  });
+
+  afterEach(async () => {
+    for (const harness of harnesses.splice(0)) {
+      await harness.close();
+    }
+  });
+
+  after(async () => {
+    await host.stop();
+  });
+
+  async function start(tools: Record<string, unknown>, stage = "staging"): Promise<Harness> {
+    const harness = new Harness({ spec: { url: host.url, stage, auth: { type: "none" }, tools }, audit: true });
+    harnesses.push(harness);
+    return harness.connect();
+  }
+
+  it("refuses a denied tool wrapped in mcp_call_tool or mcp_call_tools, on every path, and never sends it", async () => {
+    const bridge = await start({ deny: ["*_Delete"], gateway: true });
+    const before = host.ran("Book_Delete");
+    const beforeGet = host.ran("Book_Get");
+
+    const attempts = [
+      await bridge.call("mcp_call_tool", { name: "Book_Delete" }),
+      await bridge.call("call_tool", { name: "mcp_call_tool", arguments: { name: "Book_Delete" } }),
+      await bridge.call("mcp_call_tools", { calls: [{ name: "Book_Get" }, { name: "Book_Delete" }] }),
+    ];
+    const run = parsed<{ error?: string; calls: { tool: string; status: string }[] }>(await bridge.call("run_code", {
+      code: "async () => tools.mcp_call_tools({ calls: [{ name: 'Book_Delete' }] })",
+    }));
+
+    for (const result of attempts) {
+      assert.equal(result.isError, true);
+      assert.match(text(result), /^\[BRIDGE_TOOL_HIDDEN\] Tool "Book_Delete", called through 'mcp_call_tools?',.*tools\.deny pattern '\*_Delete'.*not sent to the host/);
+    }
+
+    assert.match(run.error ?? "", /\[BRIDGE_TOOL_HIDDEN\] Tool "Book_Delete", called through 'mcp_call_tools'/);
+    assert.deepEqual(run.calls.map((call) => `${call.tool}:${call.status}`), ["mcp_call_tools:refused"]);
+    assert.equal(host.ran("Book_Delete"), before, "the denied tool never ran");
+    assert.equal(host.ran("Book_Get"), beforeGet, "a batch with one hidden tool is refused as a whole");
+  });
+
+  it("refuses padded or missing inner names, which a host could resolve to a different tool than the filter saw", async () => {
+    const bridge = await start({ deny: ["*_Delete"], gateway: true });
+
+    for (const args of [{ name: "Book_Delete " }, { name: "Book_Delete\u0085" }, {}, { name: 42 }]) {
+      const result = await bridge.call("mcp_call_tool", args);
+      assert.match(text(result), /^\[BRIDGE_TOOL_HIDDEN\].*missing, or contains spaces or control characters/, JSON.stringify(args));
+    }
+
+    assert.match(text(await bridge.call("mcp_call_tools", { calls: [] })), /^\[BRIDGE_TOOL_HIDDEN\]/);
+  });
+
+  it("runs allowed inner tools and names them in the audit log", async () => {
+    const bridge = await start({ deny: ["*_Delete"], gateway: true });
+
+    const result = await bridge.call("mcp_call_tools", { calls: [{ name: "Book_Get" }, { name: "Issue_Search" }] });
+
+    assert.notEqual(result.isError, true, text(result));
+    const entries = fs.readFileSync(bridge.auditFile, "utf8").trim().split("\n").map((line) => JSON.parse(line) as { tool: string; targets?: string[]; outcome: string });
+    assert.deepEqual(entries.at(-1), { ...entries.at(-1), tool: "mcp_call_tools", targets: ["Book_Get", "Issue_Search"], outcome: "ok" });
+  });
+
+  it("applies the read-only preset to inner tools even when include lets the wrapper through", async () => {
+    const bridge = await start({ include: ["mcp_*"], gateway: true }, "production");
+    const before = host.ran("Book_Delete");
+
+    const refused = await bridge.call("mcp_call_tool", { name: "Book_Delete" });
+    const allowed = await bridge.call("mcp_call_tool", { name: "Book_Get" });
+
+    assert.match(text(refused), /^\[BRIDGE_TOOL_HIDDEN\] Tool "Book_Delete", called through 'mcp_call_tool',.*GET endpoints/);
+    assert.equal(text(allowed), "ran Book_Get");
+    assert.equal(host.ran("Book_Delete"), before);
+  });
+});
+
