@@ -8,7 +8,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
-## [0.6.1] — 2026-11-07
+## [0.6.1] — 2026-11-10
 
 Fixes from a security review of gateway mode and `run_code`.
 

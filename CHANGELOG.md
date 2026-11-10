@@ -6,9 +6,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
-## [0.6.1] — 2026-11-07
+## [0.6.1] — 2026-11-10
 
-Fixes from a security review of the 0.6.0 gateway tools. No API changes.
+Fixes from a security review of the 0.6.0 gateway tools, and MCP SDK 2.4.0. No API changes.
 
 ### Fixed
 
@@ -26,6 +26,14 @@ Fixes from a security review of the 0.6.0 gateway tools. No API changes.
   envelope fail after every call ran.
 - Tool names inside `mcp_call_tool` and `mcp_call_tools` must be exact: a padded name is refused instead of trimmed into
   a tool a client-side filter never saw. Invalid UTF-16 in a gateway argument is a `VALIDATION_ERROR`.
+
+### Changed
+
+- **MCP SDK `ModelContextProtocol.AspNetCore` 2.3.1 → 2.4.0** ([#126](https://github.com/tekthar/abp-mcp/pull/126)).
+  On the server it fixes notifications and cancellation being dropped when a request is cancelled, and it ends open
+  `subscriptions/listen` requests when the transport stops delivering messages. The rest of the release (an experimental
+  Skills package, OAuth fixes in the SDK's client, MCP Apps property matching) does not touch the paths abp-mcp uses.
+  AbpMcp now depends on 2.4.0 or later.
 
 ## [0.6.0] — 2026-11-06
 
