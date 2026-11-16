@@ -16,7 +16,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="coverlet.collector" Version="10.0.0" />
+    <PackageReference Include="coverlet.collector" Version="10.1.1" />
     <!-- Compiles a stand-in for a binary built against AbpMcp 0.4.x, to test the type forwards (#98). -->
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="5.9.0" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.11.0" />
